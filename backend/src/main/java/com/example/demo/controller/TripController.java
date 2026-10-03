@@ -1,0 +1,49 @@
+package com.example.demo.controller;
+
+import com.example.demo.dto.TripDTO;
+import com.example.demo.model.Trip;
+import com.example.demo.service.TripService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/trips")
+@RequiredArgsConstructor
+public class TripController {
+
+    private final TripService tripService;
+
+    /**
+     * Endpoint per creare un viaggio.
+     * Metodo HTTP: POST
+     * URL: http://localhost:8080/api/trips/organizer/{organizerId}
+     */
+
+    @PostMapping("/create")
+    public ResponseEntity<TripDTO> createTrip(@RequestBody Trip trip, java.security.Principal principal) {
+        // principal.getName() contiene l'email dell'utente estratta in modo sicuro dal Token JWT
+        TripDTO createdTrip = tripService.createTrip(trip, principal.getName());
+        return new ResponseEntity<>(createdTrip, HttpStatus.CREATED);
+    }
+
+    @GetMapping("/popular")
+    public ResponseEntity<List<TripDTO>> getPopularTrips() {
+        // In futuro qui potrai chiamare un metodo del Service che filtra per rating più alto.
+        // Per ora usiamo getAllTrips, ma esponiamolo sulla rotta corretta.
+        return ResponseEntity.ok(tripService.getAllTrips());
+    }
+
+    /**
+     * Endpoint per vedere tutti i viaggi.
+     * Metodo HTTP: GET
+     * URL: http://localhost:8080/api/trips
+     */
+    @GetMapping
+    public ResponseEntity<List<TripDTO>> getAllTrips() {
+        return ResponseEntity.ok(tripService.getAllTrips());
+    }
+}
