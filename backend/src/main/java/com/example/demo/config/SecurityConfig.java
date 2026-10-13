@@ -26,9 +26,8 @@ public class SecurityConfig {
                 // Disabilitiamo il CSRF (necessario per le API REST con JWT)
                 .csrf(AbstractHttpConfigurer::disable)
 
-                // Creiamo le regole del nostro "Buttafuori"
                 .authorizeHttpRequests(auth -> auth
-                        // ROTTE PUBBLICHE: Login, Registrazione e Documentazione Swagger aperti a tutti
+                        // ROTTE PUBBLICHE
                         .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/register",
@@ -37,13 +36,17 @@ public class SecurityConfig {
                                 "/swagger-ui.html"
                         ).permitAll()
 
-                        // ROTTE ORGANIZZATORE: Solo chi ha questo ruolo può gestire i viaggi
+                        // ROTTE VIAGGI:
+                        // 1. Solo l'organizzatore può vedere i "suoi" viaggi, crearne di nuovi o eliminarli
+                        .requestMatchers("/api/trips/my-trips", "/api/trips/create").hasRole("ORGANIZZATORE")
+                        .requestMatchers(org.springframework.http.HttpMethod.DELETE, "/api/trips/**").hasRole("ORGANIZZATORE")
+                        // 2. Qualsiasi utente loggato (Viaggiatore o Organizzatore) può visualizzare i viaggi e i dettagli
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/trips/**").authenticated()
                         .requestMatchers("/api/trips/**").hasRole("ORGANIZZATORE")
 
-                        // ROTTE VIAGGIATORE: Solo chi ha questo ruolo prenota e crea liste
+                        // ROTTE VIAGGIATORE
                         .requestMatchers("/api/reservations/**", "/api/lists/**").hasRole("VIAGGIATORE")
 
-                        // QUALSIASI ALTRA ROTTA: Devi essere almeno loggato
                         .anyRequest().authenticated()
                 )
 

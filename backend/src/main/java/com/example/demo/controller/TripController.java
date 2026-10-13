@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
 
 @RestController
@@ -30,6 +31,11 @@ public class TripController {
         return new ResponseEntity<>(createdTrip, HttpStatus.CREATED);
     }
 
+    @GetMapping("/my-trips")
+    public ResponseEntity<List<TripDTO>> getMyTrips(Principal principal) {
+        return ResponseEntity.ok(tripService.getTripsByOrganizer(principal.getName()));
+    }
+
     @GetMapping("/popular")
     public ResponseEntity<List<TripDTO>> getPopularTrips() {
         // In futuro qui potrai chiamare un metodo del Service che filtra per rating più alto.
@@ -45,5 +51,18 @@ public class TripController {
     @GetMapping
     public ResponseEntity<List<TripDTO>> getAllTrips() {
         return ResponseEntity.ok(tripService.getAllTrips());
+    }
+
+    // --- NUOVO: Dettaglio singolo viaggio ---
+    @GetMapping("/{id}")
+    public ResponseEntity<TripDTO> getTripById(@PathVariable Long id) {
+        return ResponseEntity.ok(tripService.getTripById(id));
+    }
+
+    // --- NUOVO: Eliminazione viaggio da parte dell'agenzia ---
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteTrip(@PathVariable Long id, java.security.Principal principal) {
+        tripService.deleteTrip(id, principal.getName());
+        return ResponseEntity.noContent().build();
     }
 }

@@ -29,39 +29,36 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
 
-        // 1. Estraiamo l'header "Authorization" dalla richiesta HTTP
         final String authHeader = request.getHeader("Authorization");
-        final String jwt;
-        final String userEmail;
 
-        // 2. Se non c'è il token o non inizia con "Bearer ", saltiamo il controllo
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        // 3. Estraiamo il token puro (togliendo i primi 7 caratteri "Bearer ")
-        jwt = authHeader.substring(7);
-        userEmail = jwtService.extractUsername(jwt);
+        try {
+            final String jwt = authHeader.substring(7).trim();
+            final String userEmail = jwtService.extractUsername(jwt);
 
-        // 4. Se il token ha un'email e l'utente non è ancora nel SecurityContext
-        if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
 
-            UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+                if (jwtService.isTokenValid(jwt, userDetails)) {
+                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                            userDetails,
+                            null,
+                            userDetails.getAuthorities()
+                    );
+                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
 
-            // 5. Se il token è valido, diciamo a Spring che l'utente è ufficialmente Loggato!
-            if (jwtService.isTokenValid(jwt, userDetails)) {
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,
-                        userDetails.getAuthorities() // Qui ci sono i ruoli (ORGANIZZATORE/VIAGGIATORE)
-                );
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+                    System.out.println("JWT OK -> Utente: " + userEmail + " | Autorità: " + userDetails.getAuthorities());
+                }
             }
+        } catch (Exception e) {
+            System.out.println("ERRORE VALIDAZIONE JWT (Token scaduto o non valido): " + e.getMessage());
         }
 
-        // 6. Passiamo la richiesta al prossimo anello della catena
         filterChain.doFilter(request, response);
     }
 }

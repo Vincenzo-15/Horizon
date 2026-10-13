@@ -4,6 +4,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -16,7 +17,7 @@ public class TripDTO {
     private LocalDate endDate;
     private Integer availableSpots;
     private String location;
-    private String imageUrl;
+    private List<String> imageUrls;
     private Double averageRating = 0.0;
     private Integer reviewCount = 0;
     private Long organizerId;

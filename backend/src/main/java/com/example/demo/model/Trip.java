@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 @Entity
 @Table(name = "trips")
@@ -36,19 +37,20 @@ public class Trip {
     private Integer availableSpots;
 
     @Column(nullable = false)
-    private String location; // La località (es. "Baa Atoll, Maldives")
+    private String location;
 
-    @Column(length = 500)
-    private String imageUrl; // L'URL dell'immagine di copertina
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "trip_images", joinColumns = @JoinColumn(name = "trip_id"))
+    @Column(name = "image_url", length = 1000)
+    private List<String> imageUrls;
 
-    // Per ora inseriamo questi campi statici, in futuro li calcoleremo dalle vere Recensioni
-    @Column(nullable = false)
+    // Valori di default espliciti anche a livello di database SQL
+    @Column(nullable = false, columnDefinition = "double precision default 0.0")
     private Double averageRating = 0.0;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "integer default 0")
     private Integer reviewCount = 0;
 
-    // Relazione: Molti viaggi creati da un solo Organizzatore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "organizer_id", nullable = false)
     private User organizer;

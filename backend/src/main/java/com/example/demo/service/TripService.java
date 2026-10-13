@@ -8,6 +8,8 @@ import com.example.demo.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
+// --- IMPORT CORRETTO DI SPRING BOOT ---
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -17,15 +19,11 @@ import java.util.stream.Collectors;
 public class TripService {
 
     private final TripRepository tripRepository;
-    private final UserRepository userRepository; // Ci serve per cercare l'organizzatore
+    private final UserRepository userRepository;
     private final ModelMapper modelMapper;
 
-    /**
-     * Crea un nuovo viaggio associandolo a un organizzatore
-     */
-    // IN TRIP SERVICE
+    @Transactional
     public TripDTO createTrip(Trip trip, String organizerEmail) {
-        // 1. Cerchiamo l'utente tramite l'email presa dal Token, non dall'URL
         User organizer = userRepository.findByEmail(organizerEmail)
                 .orElseThrow(() -> new RuntimeException("Utente non trovato"));
 
@@ -35,15 +33,51 @@ public class TripService {
 
         trip.setOrganizer(organizer);
         Trip savedTrip = tripRepository.save(trip);
-        return modelMapper.map(savedTrip, TripDTO.class);
+        return convertToDTO(savedTrip);
     }
 
-    /**
-     * Recupera tutti i viaggi disponibili
-     */
+    @Transactional(readOnly = true)
     public List<TripDTO> getAllTrips() {
         return tripRepository.findAll().stream()
-                .map(trip -> modelMapper.map(trip, TripDTO.class))
+                .map(this::convertToDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<TripDTO> getTripsByOrganizer(String organizerEmail) {
+        User organizer = userRepository.findByEmail(organizerEmail)
+                .orElseThrow(() -> new RuntimeException("Organizzatore non trovato"));
+
+        return tripRepository.findByOrganizerId(organizer.getId()).stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public TripDTO getTripById(Long id) {
+        Trip trip = tripRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Viaggio non trovato con ID: " + id));
+        return convertToDTO(trip);
+    }
+
+    @Transactional
+    public void deleteTrip(Long id, String organizerEmail) {
+        Trip trip = tripRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Viaggio non trovato"));
+
+        if (!trip.getOrganizer().getEmail().equals(organizerEmail)) {
+            throw new RuntimeException("Non sei autorizzato a eliminare questo pacchetto!");
+        }
+
+        tripRepository.delete(trip);
+    }
+
+    private TripDTO convertToDTO(Trip trip) {
+        TripDTO dto = modelMapper.map(trip, TripDTO.class);
+        if (trip.getOrganizer() != null) {
+            dto.setOrganizerId(trip.getOrganizer().getId());
+            dto.setOrganizerName(trip.getOrganizer().getName());
+        }
+        return dto;
     }
 }

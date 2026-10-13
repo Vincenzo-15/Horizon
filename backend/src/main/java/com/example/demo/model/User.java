@@ -1,5 +1,6 @@
 package com.example.demo.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -41,9 +42,11 @@ public class User implements UserDetails {
     private String name;
 
     // --- NUOVI CAMPI AGGIUNTI PER LE AGENZIE ---
+    @JsonProperty("partitaIva")
     @Column(nullable = true)
     private String partitaIva;
 
+    @JsonProperty("telefono")
     @Column(nullable = true)
     private String telefono;
 
