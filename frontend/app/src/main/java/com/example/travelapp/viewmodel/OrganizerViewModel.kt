@@ -15,6 +15,8 @@ class OrganizerViewModel : ViewModel() {
     var errorMessage by mutableStateOf<String?>(null)
     var myTrips by mutableStateOf<List<TripResponse>>(emptyList())
 
+    var totalOrders by mutableStateOf(0)
+
     fun fetchMyTrips(token: String) {
         if (token.isBlank()) return
 
@@ -24,6 +26,8 @@ class OrganizerViewModel : ViewModel() {
 
             try {
                 val authHeader = "Bearer $token"
+
+                // 1. Carica i pacchetti viaggio
                 val response = RetrofitClient.apiService.getMyTrips(authHeader)
 
                 if (response.isSuccessful && response.body() != null) {
@@ -32,8 +36,17 @@ class OrganizerViewModel : ViewModel() {
                 } else {
                     errorMessage = "Impossibile caricare i pacchetti (${response.code()})"
                 }
+
+                // 2. Carica il numero di ordini ricevuti
+                val ordersResponse = RetrofitClient.apiService.getAgencyOrders(authHeader)
+                if (ordersResponse.isSuccessful && ordersResponse.body() != null) {
+                    // Aggiorna il contatore con la dimensione della lista ricevuta
+                    totalOrders = ordersResponse.body()!!.size
+                }
+
             } catch (e: Exception) {
                 errorMessage = "Errore di connessione al server."
+                android.util.Log.e("API_ERROR", "Errore: ${e.message}", e)
             } finally {
                 isLoading = false
             }

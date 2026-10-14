@@ -23,15 +23,20 @@ public class Reservation {
     @Column(nullable = false)
     private Status status;
 
-    // Relazione: Molte prenotazioni fatte da un solo Viaggiatore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "traveler_id", nullable = false)
     private User traveler;
 
-    // Relazione: Molte prenotazioni relative a un solo Viaggio
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "trip_id", nullable = false)
     private Trip trip;
+
+    // --- NUOVI CAMPI ---
+    @Column(nullable = false)
+    private Integer bookedSpots; // Quanti posti ha prenotato
+
+    @Column(nullable = false)
+    private Double totalPaid; // Quanto ha pagato in totale
 
     public enum Status {
         PENDING,

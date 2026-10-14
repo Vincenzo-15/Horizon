@@ -10,4 +10,6 @@ import java.util.List;
 public interface TripRepository extends JpaRepository<Trip, Long> {
 
     List<Trip> findByOrganizerId(Long organizerId);
+
+    List<Trip> findByAvailableSpotsGreaterThan(Integer spots);
 }

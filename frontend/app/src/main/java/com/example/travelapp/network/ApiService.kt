@@ -1,13 +1,18 @@
 package com.example.travelapp.network
 
 import com.google.gson.annotations.SerializedName // <-- Import fondamentale da aggiungere
+import okhttp3.MultipartBody
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.POST
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.Multipart
+import retrofit2.http.Part
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 interface ApiService {
 
@@ -46,6 +51,24 @@ interface ApiService {
         @Header("Authorization") token: String,
         @Path("id") tripId: Long
     ): Response<Unit>
+
+    @Multipart
+    @POST("/api/upload")
+    suspend fun uploadImages(
+        @Part files: List<MultipartBody.Part>
+    ): Response<List<String>>
+
+    @POST("/api/reservations/create/{tripId}")
+    suspend fun bookTrip(
+        @Header("Authorization") token: String,
+        @Path("tripId") tripId: Long,
+        @Query("spots") spots: Int
+    ): retrofit2.Response<ResponseBody>
+
+    @GET("/api/reservations/agency-orders")
+    suspend fun getAgencyOrders(
+        @Header("Authorization") token: String
+    ): retrofit2.Response<List<com.example.travelapp.network.Reservation>>
 }
 
 data class TripRequest(

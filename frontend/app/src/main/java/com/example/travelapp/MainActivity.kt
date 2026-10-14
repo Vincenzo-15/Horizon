@@ -100,7 +100,8 @@ class MainActivity : ComponentActivity() {
                                 tokenUtente = currentToken,
                                 onTripClick = { tripId ->
                                     navController.navigate("trip_detail/$tripId") // --- AGGIUNTO ---
-                                }
+                                },
+                                onNavigateToProfile = {navController.navigate("profile")}
                             )
                         }
 
@@ -113,10 +114,20 @@ class MainActivity : ComponentActivity() {
                                 onTripClick = { tripId ->
                                     navController.navigate("trip_detail/$tripId") // --- AGGIUNTO ---
                                 },
+                                onNavigateToProfile = {navController.navigate("profile")}
+                            )
+                        }
+
+                        // --- NUOVA ROTTA: PROFILO & LOGOUT ---
+                        composable("profile") {
+                            val currentRole = tokenManager.getRoleFromToken()
+                            com.example.travelapp.ui.profile.ProfileScreen(
+                                ruoloUtente = currentRole,
+                                onNavigateBack = { navController.navigateUp() },
                                 onLogout = {
                                     tokenManager.clearToken()
                                     navController.navigate("login") {
-                                        popUpTo(0) { inclusive = true }
+                                        popUpTo(0) { inclusive = true } // Pulisce tutta la cronologia
                                     }
                                 }
                             )

@@ -101,7 +101,8 @@ fun Modifier.shimmerEffect(): Modifier = composed {
 fun HomeScreen(
     viewModel: HomeViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     tokenUtente: String = "",
-    onTripClick: (Long) -> Unit = {} // --- AGGIUNTO ---
+    onTripClick: (Long) -> Unit = {},
+    onNavigateToProfile: () -> Unit = {}
 ) {
     LaunchedEffect(Unit) {
         if (tokenUtente.isNotEmpty()) {
@@ -116,7 +117,7 @@ fun HomeScreen(
                 NavigationBarItem(icon = { Icon(Icons.Default.Send, "Chat") }, label = { Text("Chat") }, selected = false, onClick = {})
                 NavigationBarItem(icon = { Icon(Icons.Default.DateRange, "Schedule") }, label = { Text("Viaggi") }, selected = false, onClick = {})
                 NavigationBarItem(icon = { Icon(Icons.Default.Favorite, "Saved") }, label = { Text("Preferiti") }, selected = false, onClick = {})
-                NavigationBarItem(icon = { Icon(Icons.Default.Person, "Profile") }, label = { Text("Profilo") }, selected = false, onClick = {})
+                NavigationBarItem(icon = { Icon(Icons.Default.Person, "Profile") }, label = { Text("Profilo") }, selected = false, onClick = {onNavigateToProfile()})
             }
         }
     ) { paddingValues ->

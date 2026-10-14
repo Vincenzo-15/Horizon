@@ -35,21 +35,21 @@ fun TripDetailScreen(
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
     var isFavorite by remember { mutableStateOf(false) }
-    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Variabile per il contatore dei posti da acquistare
+    var spotsToBook by remember { mutableStateOf(1) }
 
     LaunchedEffect(tripId) {
         viewModel.fetchTripDetail(tokenUtente, tripId)
     }
 
     LaunchedEffect(viewModel.isDeleted) {
-        if (viewModel.isDeleted) {
-            onNavigateBack()
-        }
+        if (viewModel.isDeleted) onNavigateBack()
     }
 
     val trip = viewModel.trip
 
-    // Dialog di conferma eliminazione per l'Agenzia
+    // Pop-up: Conferma di Eliminazione (Solo per Agenzia)
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -62,20 +62,33 @@ fun TripDetailScreen(
                         viewModel.deleteTrip(tokenUtente, tripId)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text("Elimina")
-                }
+                ) { Text("Elimina") }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Annulla")
-                }
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Annulla") }
+            }
+        )
+    }
+
+    // Pop-up: Messaggio Esito Prenotazione (Solo per Viaggiatore)
+    if (viewModel.bookingMessage != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearBookingMessage() },
+            title = {
+                Text(
+                    text = if (viewModel.bookingSuccess) "Prenotazione Confermata!" else "Attenzione",
+                    fontWeight = FontWeight.Bold,
+                    color = if (viewModel.bookingSuccess) Color(0xFF10B981) else MaterialTheme.colorScheme.error
+                )
+            },
+            text = { Text(viewModel.bookingMessage!!) },
+            confirmButton = {
+                Button(onClick = { viewModel.clearBookingMessage() }) { Text("OK") }
             }
         )
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             if (trip != null) {
                 Surface(
@@ -90,24 +103,22 @@ fun TripDetailScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+
+                        // PREZZO TOTALE DINAMICO
                         Column {
                             Text("Prezzo totale", fontSize = 12.sp, color = Color.Gray)
                             Row(verticalAlignment = Alignment.Bottom) {
+                                val total = (trip.price ?: 0.0) * spotsToBook
                                 Text(
-                                    text = "${trip.price}€",
+                                    text = "${total}€",
                                     fontSize = 24.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                                Text(
-                                    text = " / persona",
-                                    fontSize = 14.sp,
-                                    color = Color.Gray,
-                                    modifier = Modifier.padding(bottom = 3.dp)
-                                )
                             }
                         }
 
+                        // BARRA DELLE AZIONI IN BASE AL RUOLO
                         if (ruoloUtente == "ORGANIZZATORE") {
                             Button(
                                 onClick = { showDeleteDialog = true },
@@ -120,13 +131,46 @@ fun TripDetailScreen(
                                 Text("Elimina Annuncio", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             }
                         } else {
-                            Button(
-                                onClick = { /* Nel prossimo step collegheremo la prenotazione */ },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier.height(54.dp)
-                            ) {
-                                Text("Prenota Ora", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 12.dp))
+                            // Sezione Viaggiatore: Selettore Posti + Pulsante Prenota
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+
+                                // Selettore Posti ( + / - )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                                        .padding(horizontal = 4.dp)
+                                ) {
+                                    TextButton(onClick = { if (spotsToBook > 1) spotsToBook-- }) {
+                                        Text("-", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Text("$spotsToBook", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    TextButton(onClick = { if (spotsToBook < (trip.availableSpots ?: 1)) spotsToBook++ }) {
+                                        Text("+", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                // Pulsante di Prenotazione
+                                Button(
+                                    onClick = { viewModel.bookTrip(tokenUtente, tripId, spotsToBook) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier.height(54.dp),
+                                    enabled = !viewModel.isBooking && (trip.availableSpots ?: 0) > 0
+                                ) {
+                                    if (viewModel.isBooking) {
+                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                                    } else {
+                                        Text(
+                                            text = if ((trip.availableSpots ?: 0) > 0) "Prenota" else "Esaurito",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp,
+                                            modifier = Modifier.padding(horizontal = 8.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -156,9 +200,6 @@ fun TripDetailScreen(
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    // ==========================================
-                    // 1. GALLERIA FOTOGRAFICA SCORREVOLE (HERO)
-                    // ==========================================
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -180,7 +221,6 @@ fun TripDetailScreen(
                                 )
                             }
 
-                            // Sfumatura scura in basso per gli indicatori
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -191,7 +231,6 @@ fun TripDetailScreen(
                                     )
                             )
 
-                            // Indicatori a pallini in basso al centro
                             Row(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
@@ -210,7 +249,6 @@ fun TripDetailScreen(
                                 }
                             }
 
-                            // Badge contatore in basso a destra (es. 1/3)
                             Surface(
                                 color = Color.Black.copy(alpha = 0.65f),
                                 shape = RoundedCornerShape(12.dp),
@@ -233,9 +271,6 @@ fun TripDetailScreen(
                         }
                     }
 
-                    // ==========================================
-                    // 2. CORPO DEI DETTAGLI SOVRAPPOSTO
-                    // ==========================================
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -244,7 +279,6 @@ fun TripDetailScreen(
                             .background(MaterialTheme.colorScheme.surface)
                             .padding(24.dp)
                     ) {
-                        // Località e Rating
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -279,7 +313,6 @@ fun TripDetailScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Titolo del Pacchetto
                         Text(
                             text = trip.title,
                             fontSize = 28.sp,
@@ -289,7 +322,6 @@ fun TripDetailScreen(
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // Card Informazioni Rapide (Date e Posti)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -345,7 +377,6 @@ fun TripDetailScreen(
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // Card Agenzia Organizzatrice
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(18.dp),
@@ -382,7 +413,6 @@ fun TripDetailScreen(
 
                         Spacer(modifier = Modifier.height(24.dp))
 
-                        // Descrizione Completa
                         Text(
                             text = "Descrizione dell'esperienza",
                             fontSize = 18.sp,
@@ -398,9 +428,6 @@ fun TripDetailScreen(
                     }
                 }
 
-                // ==========================================
-                // 3. PULSANTI FLUTTUANTI IN ALTO (INDIETRO / PREFERITI)
-                // ==========================================
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

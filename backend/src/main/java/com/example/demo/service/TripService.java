@@ -38,7 +38,8 @@ public class TripService {
 
     @Transactional(readOnly = true)
     public List<TripDTO> getAllTrips() {
-        return tripRepository.findAll().stream()
+        // Mostra solo i pacchetti con almeno 1 posto libero!
+        return tripRepository.findByAvailableSpotsGreaterThan(0).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }

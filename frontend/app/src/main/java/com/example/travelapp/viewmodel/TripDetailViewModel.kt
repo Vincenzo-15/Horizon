@@ -14,7 +14,14 @@ class TripDetailViewModel : ViewModel() {
     var isLoading by mutableStateOf(true)
     var errorMessage by mutableStateOf<String?>(null)
     var trip by mutableStateOf<TripResponse?>(null)
+
+    // Stati per l'eliminazione (Agenzia)
     var isDeleted by mutableStateOf(false)
+
+    // Stati per la prenotazione (Viaggiatore)
+    var isBooking by mutableStateOf(false)
+    var bookingSuccess by mutableStateOf(false)
+    var bookingMessage by mutableStateOf<String?>(null)
 
     fun fetchTripDetail(token: String, tripId: Long) {
         viewModelScope.launch {
@@ -51,5 +58,36 @@ class TripDetailViewModel : ViewModel() {
                 isLoading = false
             }
         }
+    }
+
+    // --- NUOVA FUNZIONE DI PRENOTAZIONE ---
+    fun bookTrip(token: String, tripId: Long, spots: Int) {
+        viewModelScope.launch {
+            isBooking = true
+            bookingMessage = null
+            try {
+                val response = RetrofitClient.apiService.bookTrip("Bearer $token", tripId, spots)
+                if (response.isSuccessful) {
+                    bookingSuccess = true
+                    bookingMessage = "Prenotazione confermata con successo! Ti abbiamo inviato un'email con il riepilogo."
+
+                    // Ricarichiamo i dettagli per far scendere il numero di posti rimasti a schermo
+                    fetchTripDetail(token, tripId)
+                } else {
+                    // Leggiamo l'errore inviato dal Backend (es. "Posti insufficienti")
+                    val errorStr = response.errorBody()?.string() ?: "Errore durante la prenotazione."
+                    bookingMessage = errorStr
+                }
+            } catch (e: Exception) {
+                bookingMessage = "Impossibile contattare il server."
+            } finally {
+                isBooking = false
+            }
+        }
+    }
+
+    fun clearBookingMessage() {
+        bookingMessage = null
+        bookingSuccess = false
     }
 }

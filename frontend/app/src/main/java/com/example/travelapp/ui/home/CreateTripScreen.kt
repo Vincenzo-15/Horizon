@@ -56,7 +56,6 @@ fun CreateTripScreen(
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 5),
         onResult = { uris ->
             if (uris.isNotEmpty()) {
-                // Mantiene il permesso di lettura sulle foto selezionate
                 uris.forEach { uri ->
                     try {
                         context.contentResolver.takePersistableUriPermission(
@@ -78,7 +77,6 @@ fun CreateTripScreen(
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
-        // --- HERO IMAGE CAROUSEL CON GRADIENTE ---
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -100,7 +98,6 @@ fun CreateTripScreen(
                     )
                 }
 
-                // Contatore immagini (es. 1/3)
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -118,7 +115,6 @@ fun CreateTripScreen(
                 }
 
             } else {
-                // Placeholder se non ci sono immagini + Bottone rapido Foto Demo per Emulatore
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -158,7 +154,6 @@ fun CreateTripScreen(
                 }
             }
 
-            // Sfumatura nera in basso
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -166,7 +161,6 @@ fun CreateTripScreen(
             )
         }
 
-        // Tasto Indietro Fluttuante
         IconButton(
             onClick = onNavigateBack,
             modifier = Modifier
@@ -178,7 +172,6 @@ fun CreateTripScreen(
             Icon(Icons.Default.ArrowBack, contentDescription = "Indietro", tint = Color.Black)
         }
 
-        // --- PANNELLO FORM SOVRAPPOSTO ---
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -264,7 +257,8 @@ fun CreateTripScreen(
 
             Button(
                 onClick = {
-                    viewModel.createTrip(tokenUtente, title, description, price, startDate, endDate, spots, location, imageUris)
+                    // --- MODIFICA APPLICATA QUI: aggiunta la variabile context! ---
+                    viewModel.createTrip(context, tokenUtente, title, description, price, startDate, endDate, spots, location, imageUris)
                 },
                 modifier = Modifier.fillMaxWidth().height(60.dp),
                 shape = RoundedCornerShape(16.dp),

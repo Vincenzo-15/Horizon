@@ -33,7 +33,9 @@ public class SecurityConfig {
                                 "/api/auth/register",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
-                                "/swagger-ui.html"
+                                "/swagger-ui.html",
+                                "/uploads/**",  // Permettiamo l'accesso alle immagini caricate
+                                "/api/upload"
                         ).permitAll()
 
                         // ROTTE VIAGGI:
@@ -44,8 +46,13 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/trips/**").authenticated()
                         .requestMatchers("/api/trips/**").hasRole("ORGANIZZATORE")
 
-                        // ROTTE VIAGGIATORE
-                        .requestMatchers("/api/reservations/**", "/api/lists/**").hasRole("VIAGGIATORE")
+                        /// ROTTE VIAGGIATORE
+                        // Solo il viaggiatore può creare prenotazioni e vedere il SUO storico
+                        .requestMatchers("/api/reservations/create/**", "/api/reservations/my-reservations", "/api/lists/**").hasRole("VIAGGIATORE")
+
+                        // ROTTE AGENZIA
+                        // Solo l'organizzatore può vedere gli ordini ricevuti
+                        .requestMatchers("/api/reservations/agency-orders").hasRole("ORGANIZZATORE")
 
                         .anyRequest().authenticated()
                 )

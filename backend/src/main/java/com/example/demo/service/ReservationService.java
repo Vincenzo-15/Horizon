@@ -26,57 +26,70 @@ public class ReservationService {
     private final ModelMapper modelMapper;
 
     @Transactional
-    public ReservationDTO createReservation(Long travelerId, Long tripId) {
+    public ReservationDTO createReservation(Long tripId, Integer spots, String travelerEmail) {
 
-        // 1. Cerchiamo il viaggiatore
-        User traveler = userRepository.findById(travelerId)
-                .orElseThrow(() -> new RuntimeException("Utente non trovato con ID: " + travelerId));
+        User traveler = userRepository.findByEmail(travelerEmail)
+                .orElseThrow(() -> new IllegalArgumentException("Utente non trovato nel sistema."));
 
-        // 2. Verifiche di business sull'utente
         if (traveler.getRole() != User.Role.VIAGGIATORE) {
-            throw new RuntimeException("Errore: Solo i viaggiatori possono effettuare prenotazioni!");
+            throw new IllegalArgumentException("Errore: Solo i viaggiatori possono effettuare prenotazioni.");
         }
 
-        // 3. Cerchiamo il viaggio
         Trip trip = tripRepository.findById(tripId)
-                .orElseThrow(() -> new RuntimeException("Viaggio non trovato con ID: " + tripId));
+                .orElseThrow(() -> new IllegalArgumentException("Il viaggio selezionato non è più disponibile."));
 
-        // 4. Verifica posti disponibili
-        if (trip.getAvailableSpots() <= 0) {
-            throw new RuntimeException("Spiacenti, i posti per questo viaggio sono esauriti!");
+        if (trip.getAvailableSpots() < spots) {
+            throw new IllegalArgumentException("Spiacenti, i posti sono esauriti. Rimasti: " + trip.getAvailableSpots());
         }
 
-        // 5. Creiamo la prenotazione
         Reservation reservation = new Reservation();
         reservation.setReservationDate(LocalDateTime.now());
-        reservation.setStatus(Reservation.Status.CONFIRMED); // Immaginiamo che sia confermata subito
+        reservation.setStatus(Reservation.Status.CONFIRMED);
         reservation.setTraveler(traveler);
         reservation.setTrip(trip);
+        reservation.setBookedSpots(spots);
 
-        // 6. Riduciamo i posti disponibili del viaggio
-        trip.setAvailableSpots(trip.getAvailableSpots() - 1);
-        tripRepository.save(trip); // Aggiorniamo il viaggio
+        double totale = trip.getPrice().doubleValue() * spots;
+        reservation.setTotalPaid(totale);
 
-        // 7. Salviamo la prenotazione
+        trip.setAvailableSpots(trip.getAvailableSpots() - spots);
+        tripRepository.save(trip);
+
         Reservation savedReservation = reservationRepository.save(reservation);
 
-        // 8. Convertiamo in DTO
-        ReservationDTO dto = modelMapper.map(savedReservation, ReservationDTO.class);
-        dto.setTripTitle(trip.getTitle()); // Aggiungiamo il titolo a mano per comodità del frontend
+        System.out.println("\n================================================");
+        System.out.println("✅ NUOVA PRENOTAZIONE CONFERMATA!");
+        System.out.println("📧 Inviata email di riepilogo a: " + traveler.getEmail());
+        System.out.println("🧳 Pacchetto: " + trip.getTitle());
+        System.out.println("🎟️ Posti acquistati: " + spots);
+        System.out.println("💳 Totale pagato: " + totale + "€");
+        System.out.println("================================================\n");
 
+        ReservationDTO dto = modelMapper.map(savedReservation, ReservationDTO.class);
+        dto.setTripTitle(trip.getTitle());
         return dto;
     }
 
-    /**
-     * Recupera tutte le prenotazioni di un viaggiatore specifico
-     */
-    public List<ReservationDTO> getReservationsByTraveler(Long travelerId) {
-        return reservationRepository.findByTravelerId(travelerId).stream()
-                .map(reservation -> {
-                    ReservationDTO dto = modelMapper.map(reservation, ReservationDTO.class);
-                    dto.setTripTitle(reservation.getTrip().getTitle());
-                    return dto;
-                })
+    @Transactional(readOnly = true)
+    public List<ReservationDTO> getReservationsByTraveler(String travelerEmail) {
+        User traveler = userRepository.findByEmail(travelerEmail)
+                .orElseThrow(() -> new IllegalArgumentException("Utente non trovato"));
+
+        return reservationRepository.findByTravelerId(traveler.getId()).stream()
+                .map(this::convertToDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ReservationDTO> getReservationsByOrganizer(String organizerEmail) {
+        return reservationRepository.findByTripOrganizerEmail(organizerEmail).stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    private ReservationDTO convertToDTO(Reservation reservation) {
+        ReservationDTO dto = modelMapper.map(reservation, ReservationDTO.class);
+        dto.setTripTitle(reservation.getTrip().getTitle());
+        return dto;
     }
 }

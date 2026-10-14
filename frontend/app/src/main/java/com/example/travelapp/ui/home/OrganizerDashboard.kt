@@ -33,16 +33,14 @@ fun OrganizerDashboard(
     tokenUtente: String = "",
     viewModel: OrganizerViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     onNavigateToCreateTrip: () -> Unit = {},
-    onTripClick: (Long) -> Unit = {}, // --- AGGIUNTO ---
-    onLogout: () -> Unit = {}
+    onTripClick: (Long) -> Unit = {},
+    onNavigateToProfile: () -> Unit = {}
 ) {
     LaunchedEffect(tokenUtente) {
         if (tokenUtente.isNotEmpty()) {
             viewModel.fetchMyTrips(tokenUtente)
         }
     }
-
-    val totalSpots = viewModel.myTrips.sumOf { it.availableSpots ?: 0 }
 
     Scaffold(
         floatingActionButton = {
@@ -64,7 +62,7 @@ fun OrganizerDashboard(
                 NavigationBarItem(icon = { Icon(Icons.Default.Home, "Dashboard") }, label = { Text("Console") }, selected = true, onClick = {})
                 NavigationBarItem(icon = { Icon(Icons.Default.DateRange, "Catalogo") }, label = { Text("Catalogo") }, selected = false, onClick = {})
                 NavigationBarItem(icon = { Icon(Icons.Default.Notifications, "Prenotazioni") }, label = { Text("Ordini") }, selected = false, onClick = {})
-                NavigationBarItem(icon = { Icon(Icons.Default.ExitToApp, "Esci") }, label = { Text("Logout") }, selected = false, onClick = { onLogout() })
+                NavigationBarItem(icon = { Icon(Icons.Default.Person, "Profilo") }, label = { Text("Profilo") }, selected = false, onClick = { onNavigateToProfile() })
             }
         }
     ) { paddingValues ->
@@ -183,6 +181,7 @@ fun OrganizerDashboard(
                         }
                     }
 
+                    // --- CARD ORDINI RICEVUTI COLLEGATA AL VIEWMODEL ---
                     Card(
                         modifier = Modifier.weight(1f),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -194,20 +193,21 @@ fun OrganizerDashboard(
                                 modifier = Modifier
                                     .size(40.dp)
                                     .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                                    .background(Color(0xFF10B981).copy(alpha = 0.1f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = Color(0xFF10B981))
                             }
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = "$totalSpots",
+                                // Qui il ViewModel inietta il numero reale degli ordini ricevuti!
+                                text = "${viewModel.totalOrders}",
                                 fontSize = 32.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Posti Disponibili",
+                                text = "Ordini Ricevuti",
                                 fontSize = 13.sp,
                                 color = Color.Gray,
                                 fontWeight = FontWeight.Medium
@@ -324,7 +324,7 @@ fun OrganizerDashboard(
                 items(viewModel.myTrips) { trip ->
                     OrganizerTripCard(
                         trip = trip,
-                        onClick = { onTripClick(trip.id) } // --- AGGIORNATO ---
+                        onClick = { onTripClick(trip.id) }
                     )
                 }
             }
@@ -335,7 +335,7 @@ fun OrganizerDashboard(
 @Composable
 fun OrganizerTripCard(
     trip: TripResponse,
-    onClick: () -> Unit = {} // --- AGGIUNTO ---
+    onClick: () -> Unit = {}
 ) {
     val coverImage = trip.imageUrls?.firstOrNull()
     val photosCount = trip.imageUrls?.size ?: 0
@@ -344,7 +344,7 @@ fun OrganizerTripCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 10.dp)
-            .bounceClick { onClick() }, // --- AGGIORNATO ---
+            .bounceClick { onClick() },
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -499,13 +499,5 @@ fun OrganizerTripCard(
                 }
             }
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun OrganizerDashboardPreview() {
-    TravelAppTheme {
-        OrganizerDashboard()
     }
 }

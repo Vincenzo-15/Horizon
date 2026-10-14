@@ -12,5 +12,9 @@ public class ReservationDTO {
     private String status;
     private Long travelerId;
     private Long tripId;
-    private String tripTitle; // Comodo per l'app Android da mostrare a schermo
+    private String tripTitle;
+
+    // --- NUOVI CAMPI ---
+    private Integer bookedSpots;
+    private Double totalPaid;
 }
