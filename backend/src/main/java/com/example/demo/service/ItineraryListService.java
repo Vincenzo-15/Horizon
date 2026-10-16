@@ -106,6 +106,16 @@ public class ItineraryListService {
         return modelMapper.map(list, ItineraryListDTO.class);
     }
 
+    @Transactional(readOnly = true)
+    public List<com.example.demo.dto.TripDTO> getTripsInList(Long listId) {
+        ItineraryList list = itineraryListRepository.findById(listId)
+                .orElseThrow(() -> new IllegalArgumentException("Lista non trovata"));
+
+        return list.getTrips().stream()
+                .map(trip -> modelMapper.map(trip, com.example.demo.dto.TripDTO.class))
+                .collect(Collectors.toList());
+    }
+
     /**
      * Recupera i dettagli di una singola lista tramite il suo ID
      */

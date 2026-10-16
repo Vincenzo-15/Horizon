@@ -60,4 +60,10 @@ public class ItineraryListController {
     public ResponseEntity<ItineraryListDTO> getListDetails(@PathVariable Long listId) {
         return ResponseEntity.ok(itineraryListService.getListDetails(listId));
     }
+
+    // Recupera direttamente gli oggetti viaggio completi salvati in una lista
+    @GetMapping("/{listId}/trips")
+    public ResponseEntity<List<com.example.demo.dto.TripDTO>> getTripsInList(@PathVariable Long listId) {
+        return ResponseEntity.ok(itineraryListService.getTripsInList(listId));
+    }
 }

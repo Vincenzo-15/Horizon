@@ -7,16 +7,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.travelapp.network.RetrofitClient
 import com.example.travelapp.network.ItineraryListDTO
-import com.example.travelapp.network.TripDTO // Assicurati di usare il nome che hai dato, es. TripResponse o TripDTO
+import com.example.travelapp.network.TripDTO
 import kotlinx.coroutines.launch
 
 class ListDetailViewModel : ViewModel() {
 
     var listDetails by mutableStateOf<ItineraryListDTO?>(null)
-
-    // Lista completa dei viaggi contenuti per poter disegnare le Card
     var tripsInList by mutableStateOf<List<TripDTO>>(emptyList())
-
     var isLoading by mutableStateOf(true)
     var errorMessage by mutableStateOf<String?>(null)
 
@@ -25,26 +22,22 @@ class ListDetailViewModel : ViewModel() {
             isLoading = true
             errorMessage = null
             try {
-                // 1. Chiediamo al server i dettagli di QUESTA lista
-                val response = RetrofitClient.apiService.getListDetails("Bearer $token", listId)
+                val authHeader = "Bearer $token"
 
-                if (response.isSuccessful && response.body() != null) {
-                    listDetails = response.body()
-
-                    // 2. MOCK TEMPORANEO: Dato che l'API restituisce solo gli ID (List<Long>),
-                    // per ora chiamiamo l'API generica dei viaggi e filtriamo quelli che ci interessano.
-                    // In un'app reale, il backend ti restituirebbe direttamente gli oggetti completi.
-
-                    val allTripsResponse = RetrofitClient.apiService.getPopularTrips("Bearer $token")
-                    if (allTripsResponse.isSuccessful && allTripsResponse.body() != null) {
-                        val allTrips = allTripsResponse.body()!!
-                        // Filtriamo solo i viaggi il cui ID è contenuto nella nostra lista dei preferiti
-                        tripsInList = allTrips.filter { trip -> listDetails!!.tripIds.contains(trip.id) }
-                    }
-
-                } else {
-                    errorMessage = "Impossibile trovare questa lista."
+                // 1. Chiediamo al server i dettagli base della lista (Nome, Visibilità)
+                val detailsResponse = RetrofitClient.apiService.getListDetails(authHeader, listId)
+                if (detailsResponse.isSuccessful && detailsResponse.body() != null) {
+                    listDetails = detailsResponse.body()
                 }
+
+                // 2. Chiediamo al server DIRETTAMENTE i viaggi salvati in questa lista (Senza trucchetti!)
+                val tripsResponse = RetrofitClient.apiService.getTripsInList(authHeader, listId)
+                if (tripsResponse.isSuccessful && tripsResponse.body() != null) {
+                    tripsInList = tripsResponse.body()!!
+                } else {
+                    errorMessage = "Impossibile caricare i viaggi di questa lista."
+                }
+
             } catch (e: Exception) {
                 errorMessage = "Errore di connessione al server."
             } finally {

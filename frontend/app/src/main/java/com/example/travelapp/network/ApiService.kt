@@ -99,6 +99,13 @@ interface ApiService {
         @Header("Authorization") token: String,
         @Path("listId") listId: Long
     ): retrofit2.Response<com.example.travelapp.network.ItineraryListDTO>
+
+    // 5. Scarica tutti gli oggetti TripDTO completi che sono dentro una lista
+    @GET("/api/lists/{listId}/trips")
+    suspend fun getTripsInList(
+        @Header("Authorization") token: String,
+        @Path("listId") listId: Long
+    ): retrofit2.Response<List<TripDTO>>
 }
 
 
