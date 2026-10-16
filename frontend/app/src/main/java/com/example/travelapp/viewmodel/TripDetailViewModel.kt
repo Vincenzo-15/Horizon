@@ -6,14 +6,14 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.travelapp.network.RetrofitClient
-import com.example.travelapp.network.TripResponse
+import com.example.travelapp.network.TripDTO
 import kotlinx.coroutines.launch
 
 class TripDetailViewModel : ViewModel() {
 
     var isLoading by mutableStateOf(true)
     var errorMessage by mutableStateOf<String?>(null)
-    var trip by mutableStateOf<TripResponse?>(null)
+    var trip by mutableStateOf<TripDTO?>(null)
 
     // Stati per l'eliminazione (Agenzia)
     var isDeleted by mutableStateOf(false)
@@ -22,6 +22,11 @@ class TripDetailViewModel : ViewModel() {
     var isBooking by mutableStateOf(false)
     var bookingSuccess by mutableStateOf(false)
     var bookingMessage by mutableStateOf<String?>(null)
+
+    // --- STATI PER I PREFERITI ---
+    var showFavoriteDialog by mutableStateOf(false)
+    var myLists by mutableStateOf<List<com.example.travelapp.network.ItineraryListDTO>>(emptyList())
+    var favoriteMessage by mutableStateOf<String?>(null)
 
     fun fetchTripDetail(token: String, tripId: Long) {
         viewModelScope.launch {
@@ -82,6 +87,57 @@ class TripDetailViewModel : ViewModel() {
                 bookingMessage = "Impossibile contattare il server."
             } finally {
                 isBooking = false
+            }
+        }
+    }
+
+    // Scarica le liste quando si apre il popup
+    fun fetchMyListsForDialog(token: String) {
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.getMyLists("Bearer $token")
+                if (response.isSuccessful && response.body() != null) {
+                    myLists = response.body()!!
+                }
+            } catch (e: Exception) {
+                favoriteMessage = "Errore nel caricamento delle liste"
+            }
+        }
+    }
+
+    // Aggiungi un viaggio a una lista esistente
+    fun addTripToList(token: String, listId: Long, tripId: Long) {
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.addTripToList("Bearer $token", listId, tripId)
+                if (response.isSuccessful) {
+                    favoriteMessage = "Aggiunto ai preferiti!"
+                    showFavoriteDialog = false // Chiude il popup
+                } else {
+                    favoriteMessage = "Errore: impossibile aggiungere il viaggio."
+                }
+            } catch (e: Exception) {
+                favoriteMessage = "Errore di connessione."
+            }
+        }
+    }
+
+    // Crea una lista e aggiungi subito il viaggio
+    fun createListAndAddTrip(token: String, name: String, visibility: String, tripId: Long) {
+        viewModelScope.launch {
+            try {
+                // 1. Crea la lista
+                val createResponse = RetrofitClient.apiService.createList("Bearer $token", name, visibility)
+                if (createResponse.isSuccessful && createResponse.body() != null) {
+                    val newListId = createResponse.body()!!.id
+
+                    // 2. Aggiungi il viaggio alla nuova lista
+                    addTripToList(token, newListId, tripId)
+                } else {
+                    favoriteMessage = "Impossibile creare la lista."
+                }
+            } catch (e: Exception) {
+                favoriteMessage = "Errore durante la creazione."
             }
         }
     }

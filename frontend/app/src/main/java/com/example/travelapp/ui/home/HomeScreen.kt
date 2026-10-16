@@ -104,6 +104,10 @@ fun HomeScreen(
     onTripClick: (Long) -> Unit = {},
     onNavigateToProfile: () -> Unit = {}
 ) {
+    // --- VARIABILI DI STATO ---
+    var selectedTab by remember { mutableStateOf("Home") }
+    var viewingListId by remember { mutableStateOf<Long?>(null) } // <-- NUOVO: Traccia se siamo dentro una lista
+
     LaunchedEffect(Unit) {
         if (tokenUtente.isNotEmpty()) {
             viewModel.fetchTrips(tokenUtente)
@@ -113,182 +117,235 @@ fun HomeScreen(
     Scaffold(
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                NavigationBarItem(icon = { Icon(Icons.Default.Home, "Home") }, label = { Text("Home") }, selected = true, onClick = {})
-                NavigationBarItem(icon = { Icon(Icons.Default.Send, "Chat") }, label = { Text("Chat") }, selected = false, onClick = {})
-                NavigationBarItem(icon = { Icon(Icons.Default.DateRange, "Schedule") }, label = { Text("Viaggi") }, selected = false, onClick = {})
-                NavigationBarItem(icon = { Icon(Icons.Default.Favorite, "Saved") }, label = { Text("Preferiti") }, selected = false, onClick = {})
-                NavigationBarItem(icon = { Icon(Icons.Default.Person, "Profile") }, label = { Text("Profilo") }, selected = false, onClick = {onNavigateToProfile()})
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Home, "Home") },
+                    label = { Text("Home") },
+                    selected = selectedTab == "Home",
+                    onClick = {
+                        selectedTab = "Home"
+                        viewingListId = null // Resetta la vista lista
+                    }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Send, "Chat") },
+                    label = { Text("Chat") },
+                    selected = false,
+                    onClick = {} // Da implementare
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.DateRange, "Schedule") },
+                    label = { Text("Viaggi") },
+                    selected = false,
+                    onClick = {} // Da implementare
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Favorite, "Saved") },
+                    label = { Text("Preferiti") },
+                    selected = selectedTab == "Preferiti",
+                    onClick = {
+                        selectedTab = "Preferiti"
+                        viewingListId = null // Assicurati di tornare alla vista principale dei preferiti
+                    }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Person, "Profile") },
+                    label = { Text("Profilo") },
+                    selected = false,
+                    onClick = { onNavigateToProfile() }
+                )
             }
         }
     ) { paddingValues ->
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .padding(top = 24.dp, bottom = 24.dp)
-        ) {
+        Box(modifier = Modifier.padding(paddingValues)) {
 
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Person, contentDescription = "Profile", tint = MaterialTheme.colorScheme.primary)
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text("Ciao, Viaggiatore!", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                }
-                Row {
-                    IconButton(onClick = {}) { Icon(Icons.Default.Settings, contentDescription = "Impostazioni") }
-                    IconButton(onClick = {}) { Icon(Icons.Default.Notifications, contentDescription = "Notifiche") }
-                }
-            }
+            // --- MOSTRA LA SCHERMATA CATALOGO SE È SELEZIONATA LA "HOME" ---
+            if (selectedTab == "Home") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .verticalScroll(rememberScrollState())
+                        .padding(top = 24.dp, bottom = 24.dp)
+                ) {
 
-            Spacer(modifier = Modifier.height(24.dp))
-            Column(modifier = Modifier.padding(horizontal = 24.dp)) {
-                Text("Esplora Fantastiche", fontSize = 28.sp, fontWeight = FontWeight.Normal)
-                Text("Destinazioni!", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(value = "", onValueChange = {}, placeholder = { Text("Dove vuoi andare?") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Cerca") }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(20.dp))
-                Spacer(modifier = Modifier.width(12.dp))
-                Box(modifier = Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)).bounceClick {  }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Menu, contentDescription = "Filtri", tint = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-
-            LazyRow(contentPadding = PaddingValues(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                val categories = listOf("Tutte", "Mare", "Montagna", "Città d'arte", "Avventura")
-                items(categories.size) { index ->
-                    val isSelected = index == 0
-                    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 1.dp), modifier = Modifier.bounceClick { }) {
-                        Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            val iconTint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
-                            Icon(Icons.Default.Place, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(categories[index], fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Person, contentDescription = "Profile", tint = MaterialTheme.colorScheme.primary)
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Ciao, Viaggiatore!", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        Row {
+                            IconButton(onClick = {}) { Icon(Icons.Default.Settings, contentDescription = "Impostazioni") }
+                            IconButton(onClick = {}) { Icon(Icons.Default.Notifications, contentDescription = "Notifiche") }
                         }
                     }
-                }
-            }
 
-            Spacer(modifier = Modifier.height(32.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Column(modifier = Modifier.padding(horizontal = 24.dp)) {
+                        Text("Esplora Fantastiche", fontSize = 28.sp, fontWeight = FontWeight.Normal)
+                        Text("Destinazioni!", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
 
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("I Più Popolari", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("Vedi tutto", fontSize = 14.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { })
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (viewModel.isLoading) {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                    items(3) {
-                        Column(modifier = Modifier.width(260.dp)) {
-                            Box(modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(20.dp)).shimmerEffect())
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Box(modifier = Modifier.fillMaxWidth(0.8f).height(20.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect())
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Box(modifier = Modifier.fillMaxWidth(0.5f).height(16.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect())
+                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(value = "", onValueChange = {}, placeholder = { Text("Dove vuoi andare?") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Cerca") }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(20.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Box(modifier = Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)).bounceClick {  }, contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Menu, contentDescription = "Filtri", tint = MaterialTheme.colorScheme.primary)
                         }
                     }
-                }
-            } else if (viewModel.errorMessage != null) {
-                Text(text = viewModel.errorMessage!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 24.dp))
-            } else if (viewModel.trips.isEmpty()) {
-                Text(text = "Nessun viaggio disponibile al momento.", color = Color.Gray, modifier = Modifier.padding(horizontal = 24.dp))
-            } else {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                    items(viewModel.trips.size) { index ->
-                        val trip = viewModel.trips[index]
+                    Spacer(modifier = Modifier.height(24.dp))
 
-                        Column(
-                            modifier = Modifier
-                                .width(260.dp)
-                                .bounceClick { onTripClick(trip.id) } // --- AGGIORNATO ---
+                    LazyRow(contentPadding = PaddingValues(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        val categories = listOf("Tutte", "Mare", "Montagna", "Città d'arte", "Avventura")
+                        items(categories.size) { index ->
+                            val isSelected = index == 0
+                            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 1.dp), modifier = Modifier.bounceClick { }) {
+                                Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    val iconTint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
+                                    Icon(Icons.Default.Place, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(categories[index], fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("I Più Popolari", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("Vedi tutto", fontSize = 14.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { })
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    if (viewModel.isLoading) {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 24.dp),
+                            horizontalArrangement = Arrangement.spacedBy(20.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(180.dp)
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(Color.LightGray)
-                            ) {
-                                val coverUrl = trip.imageUrls?.firstOrNull()
-                                if (!coverUrl.isNullOrEmpty()) {
-                                    AsyncImage(
-                                        model = coverUrl,
-                                        contentDescription = trip.title,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
+                            items(3) {
+                                Column(modifier = Modifier.width(260.dp)) {
+                                    Box(modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(20.dp)).shimmerEffect())
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Box(modifier = Modifier.fillMaxWidth(0.8f).height(20.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect())
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Box(modifier = Modifier.fillMaxWidth(0.5f).height(16.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect())
                                 }
-                                Box(
+                            }
+                        }
+                    } else if (viewModel.errorMessage != null) {
+                        Text(text = viewModel.errorMessage!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 24.dp))
+                    } else if (viewModel.trips.isEmpty()) {
+                        Text(text = "Nessun viaggio disponibile al momento.", color = Color.Gray, modifier = Modifier.padding(horizontal = 24.dp))
+                    } else {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 24.dp),
+                            horizontalArrangement = Arrangement.spacedBy(20.dp)
+                        ) {
+                            items(viewModel.trips.size) { index ->
+                                val trip = viewModel.trips[index]
+
+                                Column(
                                     modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(12.dp)
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.White.copy(alpha = 0.85f))
-                                        .clickable { },
-                                    contentAlignment = Alignment.Center
+                                        .width(260.dp)
+                                        .bounceClick { onTripClick(trip.id) }
                                 ) {
-                                    Icon(Icons.Default.FavoriteBorder, contentDescription = "Salva", tint = Color.Black, modifier = Modifier.size(20.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(180.dp)
+                                            .clip(RoundedCornerShape(20.dp))
+                                            .background(Color.LightGray)
+                                    ) {
+                                        val coverUrl = trip.imageUrls?.firstOrNull()
+                                        if (!coverUrl.isNullOrEmpty()) {
+                                            AsyncImage(
+                                                model = coverUrl,
+                                                contentDescription = trip.title,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(12.dp)
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(Color.White.copy(alpha = 0.85f))
+                                                .clickable { },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.FavoriteBorder, contentDescription = "Salva", tint = Color.Black, modifier = Modifier.size(20.dp))
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    Text(text = trip.title, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.LocationOn, contentDescription = "Posizione", tint = Color.Gray, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(trip.location ?: "N/D", color = Color.Gray, fontSize = 13.sp)
+                                    }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Star, contentDescription = "Star", tint = Color(0xFFFFC107), modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(trip.averageRating.toString(), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Text(" (${trip.reviewCount} recensioni)", color = Color.Gray, fontSize = 13.sp)
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(text = "Da ${trip.price}€ / persona", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
+                        }
+                    }
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(32.dp))
 
-                            Text(text = trip.title, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Esplora per Città", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.LocationOn, contentDescription = "Posizione", tint = Color.Gray, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(trip.location ?: "N/D", color = Color.Gray, fontSize = 13.sp)
+                    LazyRow(contentPadding = PaddingValues(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                        val cities = listOf("Roma", "Parigi", "Londra", "Tokyo", "New York")
+                        items(cities.size) { index ->
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.bounceClick { }) {
+                                Box(modifier = Modifier.size(80.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(cities[index], fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             }
-
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Star, contentDescription = "Star", tint = Color(0xFFFFC107), modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(trip.averageRating.toString(), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Text(" (${trip.reviewCount} recensioni)", color = Color.Gray, fontSize = 13.sp)
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(text = "Da ${trip.price}€ / persona", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Text("Esplora per Città", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 24.dp))
-            Spacer(modifier = Modifier.height(16.dp))
-
-            LazyRow(contentPadding = PaddingValues(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                val cities = listOf("Roma", "Parigi", "Londra", "Tokyo", "New York")
-                items(cities.size) { index ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.bounceClick { }) {
-                        Box(modifier = Modifier.size(80.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)))
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(cities[index], fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                    }
+            // --- MOSTRA LE LISTE SE È SELEZIONATA LA TAB "PREFERITI" ---
+            else if (selectedTab == "Preferiti") {
+                // --- NUOVA LOGICA DI NAVIGAZIONE INTERNA ---
+                if (viewingListId == null) {
+                    FavoriteListsScreen(
+                        tokenUtente = tokenUtente,
+                        onListClick = { listId -> viewingListId = listId } // Entra nella lista
+                    )
+                } else {
+                    ListDetailScreen(
+                        listId = viewingListId!!,
+                        tokenUtente = tokenUtente,
+                        onNavigateBack = { viewingListId = null }, // Torna alle liste
+                        onTripClick = onTripClick
+                    )
                 }
             }
         }

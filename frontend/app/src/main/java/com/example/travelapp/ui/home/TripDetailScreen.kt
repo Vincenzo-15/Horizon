@@ -34,9 +34,8 @@ fun TripDetailScreen(
     onNavigateBack: () -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var isFavorite by remember { mutableStateOf(false) }
+    var isFavorite by remember { mutableStateOf(false) } // Potremo collegarla in futuro a viewModel.isTripInFavorites()
 
-    // Variabile per il contatore dei posti da acquistare
     var spotsToBook by remember { mutableStateOf(1) }
 
     LaunchedEffect(tripId) {
@@ -49,7 +48,7 @@ fun TripDetailScreen(
 
     val trip = viewModel.trip
 
-    // Pop-up: Conferma di Eliminazione (Solo per Agenzia)
+    // --- POPUP: ELIMINA PACCHETTO (AGENZIA) ---
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -70,7 +69,7 @@ fun TripDetailScreen(
         )
     }
 
-    // Pop-up: Messaggio Esito Prenotazione (Solo per Viaggiatore)
+    // --- POPUP: MESSAGGIO PRENOTAZIONE ---
     if (viewModel.bookingMessage != null) {
         AlertDialog(
             onDismissRequest = { viewModel.clearBookingMessage() },
@@ -85,6 +84,100 @@ fun TripDetailScreen(
             confirmButton = {
                 Button(onClick = { viewModel.clearBookingMessage() }) { Text("OK") }
             }
+        )
+    }
+
+    // --- POPUP: SALVA NEI PREFERITI ---
+    if (viewModel.showFavoriteDialog) {
+        var isCreatingNew by remember { mutableStateOf(false) }
+        var newListName by remember { mutableStateOf("") }
+        var newListVisibility by remember { mutableStateOf("PRIVATE") } // Default
+
+        AlertDialog(
+            onDismissRequest = { viewModel.showFavoriteDialog = false },
+            title = { Text(if (isCreatingNew) "Nuova Lista" else "Salva in una lista", fontWeight = FontWeight.Bold) },
+            text = {
+                if (!isCreatingNew) {
+                    Column {
+                        if (viewModel.myLists.isEmpty()) {
+                            Text("Non hai ancora nessuna lista.", color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
+                        } else {
+                            viewModel.myLists.forEach { list ->
+                                TextButton(
+                                    onClick = { viewModel.addTripToList(tokenUtente, list.id, tripId) },
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                ) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                        Text(list.name, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                                        Icon(
+                                            imageVector = when (list.visibility) {
+                                                "PRIVATE" -> Icons.Default.Lock
+                                                "SHARED" -> Icons.Default.Person
+                                                else -> Icons.Default.Public
+                                            },
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = Color.Gray
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                        TextButton(onClick = { isCreatingNew = true }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Crea una nuova lista", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                } else {
+                    Column {
+                        OutlinedTextField(
+                            value = newListName,
+                            onValueChange = { newListName = it },
+                            label = { Text("Nome (es. Vacanze Estive)") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("Privacy", fontSize = 12.sp, color = Color.Gray)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = newListVisibility == "PRIVATE", onClick = { newListVisibility = "PRIVATE" })
+                            Text("Privata (Solo tu)")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = newListVisibility == "SHARED", onClick = { newListVisibility = "SHARED" })
+                            Text("Condivisa (Con Amici)")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (isCreatingNew) {
+                    Button(
+                        onClick = { viewModel.createListAndAddTrip(tokenUtente, newListName, newListVisibility, tripId) },
+                        enabled = newListName.isNotBlank()
+                    ) { Text("Crea e Salva") }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        if (isCreatingNew) isCreatingNew = false
+                        else viewModel.showFavoriteDialog = false
+                    }
+                ) { Text(if (isCreatingNew) "Indietro" else "Annulla") }
+            }
+        )
+    }
+
+    // --- POPUP: MESSAGGIO PREFERITI ---
+    if (viewModel.favoriteMessage != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.favoriteMessage = null },
+            confirmButton = { Button(onClick = { viewModel.favoriteMessage = null }) { Text("OK") } },
+            text = { Text(viewModel.favoriteMessage!!) }
         )
     }
 
@@ -103,8 +196,6 @@ fun TripDetailScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-
-                        // PREZZO TOTALE DINAMICO
                         Column {
                             Text("Prezzo totale", fontSize = 12.sp, color = Color.Gray)
                             Row(verticalAlignment = Alignment.Bottom) {
@@ -118,7 +209,6 @@ fun TripDetailScreen(
                             }
                         }
 
-                        // BARRA DELLE AZIONI IN BASE AL RUOLO
                         if (ruoloUtente == "ORGANIZZATORE") {
                             Button(
                                 onClick = { showDeleteDialog = true },
@@ -131,10 +221,7 @@ fun TripDetailScreen(
                                 Text("Elimina Annuncio", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             }
                         } else {
-                            // Sezione Viaggiatore: Selettore Posti + Pulsante Prenota
                             Row(verticalAlignment = Alignment.CenterVertically) {
-
-                                // Selettore Posti ( + / - )
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
@@ -152,7 +239,6 @@ fun TripDetailScreen(
 
                                 Spacer(modifier = Modifier.width(12.dp))
 
-                                // Pulsante di Prenotazione
                                 Button(
                                     onClick = { viewModel.bookTrip(tokenUtente, tripId, spotsToBook) },
                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
@@ -209,10 +295,7 @@ fun TripDetailScreen(
                         if (images.isNotEmpty()) {
                             val pagerState = rememberPagerState(pageCount = { images.size })
 
-                            HorizontalPager(
-                                state = pagerState,
-                                modifier = Modifier.fillMaxSize()
-                            ) { page ->
+                            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                                 AsyncImage(
                                     model = images[page],
                                     contentDescription = "${trip.title} - foto ${page + 1}",
@@ -224,27 +307,17 @@ fun TripDetailScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(
-                                        Brush.verticalGradient(
-                                            colors = listOf(Color.Black.copy(alpha = 0.3f), Color.Transparent, Color.Black.copy(alpha = 0.65f))
-                                        )
-                                    )
+                                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.3f), Color.Transparent, Color.Black.copy(alpha = 0.65f))))
                             )
 
                             Row(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 44.dp),
+                                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 44.dp),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 repeat(images.size) { index ->
                                     val isSelected = pagerState.currentPage == index
                                     Box(
-                                        modifier = Modifier
-                                            .height(8.dp)
-                                            .width(if (isSelected) 24.dp else 8.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isSelected) Color.White else Color.White.copy(alpha = 0.5f))
+                                        modifier = Modifier.height(8.dp).width(if (isSelected) 24.dp else 8.dp).clip(CircleShape).background(if (isSelected) Color.White else Color.White.copy(alpha = 0.5f))
                                     )
                                 }
                             }
@@ -252,17 +325,9 @@ fun TripDetailScreen(
                             Surface(
                                 color = Color.Black.copy(alpha = 0.65f),
                                 shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .padding(bottom = 40.dp, end = 20.dp)
+                                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 40.dp, end = 20.dp)
                             ) {
-                                Text(
-                                    text = "${pagerState.currentPage + 1}/${images.size}",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
+                                Text("${pagerState.currentPage + 1}/${images.size}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
                             }
                         } else {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -279,30 +344,14 @@ fun TripDetailScreen(
                             .background(MaterialTheme.colorScheme.surface)
                             .padding(24.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                                shape = RoundedCornerShape(50)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), shape = RoundedCornerShape(50)) {
+                                Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = trip.location ?: "Destinazione",
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
-                                    )
+                                    Text(trip.location ?: "Destinazione", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 }
                             }
-
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFC107), modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -312,33 +361,13 @@ fun TripDetailScreen(
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
-
-                        Text(
-                            text = trip.title,
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            lineHeight = 34.sp
-                        )
-
+                        Text(text = trip.title, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 34.sp)
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Card(
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(18.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Card(modifier = Modifier.weight(1f), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background)) {
+                                Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
                                         Icon(Icons.Default.DateRange, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                     }
                                     Spacer(modifier = Modifier.width(10.dp))
@@ -349,20 +378,9 @@ fun TripDetailScreen(
                                     }
                                 }
                             }
-
-                            Card(
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(18.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier.size(40.dp).clip(CircleShape).background(Color(0xFF10B981).copy(alpha = 0.12f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
+                            Card(modifier = Modifier.weight(1f), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background)) {
+                                Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(Color(0xFF10B981).copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
                                         Icon(Icons.Default.Person, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(20.dp))
                                     }
                                     Spacer(modifier = Modifier.width(10.dp))
@@ -376,86 +394,52 @@ fun TripDetailScreen(
                         }
 
                         Spacer(modifier = Modifier.height(20.dp))
-
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary),
-                                    contentAlignment = Alignment.Center
-                                ) {
+                        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background)) {
+                            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
                                     Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.White)
                                 }
                                 Spacer(modifier = Modifier.width(14.dp))
                                 Column {
-                                    Text(
-                                        text = "Organizzato da ${trip.organizerName ?: "Agenzia Partner"}",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp
-                                    )
-                                    Text(
-                                        text = "Tour Operator Certificato Horizon",
-                                        fontSize = 13.sp,
-                                        color = Color.Gray
-                                    )
+                                    Text("Organizzato da ${trip.organizerName ?: "Agenzia Partner"}", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text("Tour Operator Certificato Horizon", fontSize = 13.sp, color = Color.Gray)
                                 }
                             }
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))
-
-                        Text(
-                            text = "Descrizione dell'esperienza",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
+                        Text("Descrizione dell'esperienza", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
                         Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = trip.description ?: "Nessuna descrizione fornita per questo pacchetto.",
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                            lineHeight = 22.sp
-                        )
+                        Text(trip.description ?: "Nessuna descrizione fornita per questo pacchetto.", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f), lineHeight = 22.sp)
                     }
                 }
 
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp, start = 16.dp, end = 16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp, start = 16.dp, end = 16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     IconButton(
                         onClick = onNavigateBack,
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.85f))
+                        modifier = Modifier.size(44.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.85f))
                     ) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Indietro", tint = Color.Black)
                     }
 
-                    IconButton(
-                        onClick = { isFavorite = !isFavorite },
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.85f))
-                    ) {
-                        Icon(
-                            imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "Preferiti",
-                            tint = if (isFavorite) Color.Red else Color.Black
-                        )
+                    // --- PULSANTE PREFERITI CON LOGICA POPUP ---
+                    if (ruoloUtente != "ORGANIZZATORE") {
+                        IconButton(
+                            onClick = {
+                                viewModel.fetchMyListsForDialog(tokenUtente)
+                                viewModel.showFavoriteDialog = true
+                            },
+                            modifier = Modifier.size(44.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.85f))
+                        ) {
+                            Icon(
+                                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = "Preferiti",
+                                tint = if (isFavorite) Color.Red else Color.Black
+                            )
+                        }
                     }
                 }
             }

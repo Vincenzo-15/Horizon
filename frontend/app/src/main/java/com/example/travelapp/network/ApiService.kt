@@ -29,22 +29,22 @@ interface ApiService {
     @GET("/api/trips/popular")
     suspend fun getPopularTrips(
         @Header("Authorization") token: String
-    ): Response<List<TripResponse>>
+    ): Response<List<TripDTO>>
 
     @GET("/api/trips/my-trips")
-    suspend fun getMyTrips(@Header("Authorization") token: String): Response<List<TripResponse>>
+    suspend fun getMyTrips(@Header("Authorization") token: String): Response<List<TripDTO>>
 
     @POST("/api/trips/create")
     suspend fun createTrip(
         @Header("Authorization") token: String,
         @Body request: TripRequest
-    ): Response<TripResponse>
+    ): Response<TripDTO>
 
     @GET("/api/trips/{id}")
     suspend fun getTripById(
         @Header("Authorization") token: String,
         @Path("id") tripId: Long
-    ): Response<TripResponse>
+    ): Response<TripDTO>
 
     @DELETE("/api/trips/{id}")
     suspend fun deleteTrip(
@@ -68,8 +68,40 @@ interface ApiService {
     @GET("/api/reservations/agency-orders")
     suspend fun getAgencyOrders(
         @Header("Authorization") token: String
-    ): retrofit2.Response<List<com.example.travelapp.network.Reservation>>
+    ): retrofit2.Response<List<com.example.travelapp.network.ReservationDTO>>
+
+    // --- LISTE PREFERITI ---
+
+    // 1. Legge le liste dell'utente
+    @GET("/api/lists/my-lists")
+    suspend fun getMyLists(
+        @Header("Authorization") token: String
+    ): retrofit2.Response<List<com.example.travelapp.network.ItineraryListDTO>>
+
+    // 2. Crea una nuova lista
+    @POST("/api/lists/create")
+    suspend fun createList(
+        @Header("Authorization") token: String,
+        @Query("name") name: String,
+        @Query("visibility") visibility: String
+    ): retrofit2.Response<com.example.travelapp.network.ItineraryListDTO>
+
+    // 3. Aggiunge il viaggio alla lista selezionata
+    @POST("/api/lists/{listId}/add-trip/{tripId}")
+    suspend fun addTripToList(
+        @Header("Authorization") token: String,
+        @Path("listId") listId: Long,
+        @Path("tripId") tripId: Long
+    ): retrofit2.Response<com.example.travelapp.network.ItineraryListDTO>
+
+    @GET("/api/lists/{listId}")
+    suspend fun getListDetails(
+        @Header("Authorization") token: String,
+        @Path("listId") listId: Long
+    ): retrofit2.Response<com.example.travelapp.network.ItineraryListDTO>
 }
+
+
 
 data class TripRequest(
     val title: String,

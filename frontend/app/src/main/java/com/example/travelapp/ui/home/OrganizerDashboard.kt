@@ -19,12 +19,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.travelapp.network.TripResponse
-import com.example.travelapp.ui.theme.TravelAppTheme
+import com.example.travelapp.network.TripDTO
 import com.example.travelapp.viewmodel.OrganizerViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -334,7 +332,7 @@ fun OrganizerDashboard(
 
 @Composable
 fun OrganizerTripCard(
-    trip: TripResponse,
+    trip: TripDTO,
     onClick: () -> Unit = {}
 ) {
     val coverImage = trip.imageUrls?.firstOrNull()

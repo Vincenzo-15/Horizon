@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.travelapp.viewmodel.CreateTripViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,12 +47,14 @@ fun CreateTripScreen(
     var location by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
-    var startDate by remember { mutableStateOf("") }
-    var endDate by remember { mutableStateOf("") }
     var spots by remember { mutableStateOf("") }
 
-    var imageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    // Date gestite dal calendario
+    var startDate by remember { mutableStateOf("") }
+    var endDate by remember { mutableStateOf("") }
+    var showDatePicker by remember { mutableStateOf(false) }
 
+    var imageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     val context = LocalContext.current
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -75,8 +80,43 @@ fun CreateTripScreen(
         if (viewModel.isSuccess) onNavigateBack()
     }
 
+    // --- POPUP CALENDARIO MATERIAL 3 ---
+    if (showDatePicker) {
+        val dateRangePickerState = rememberDateRangePickerState()
+
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val startMillis = dateRangePickerState.selectedStartDateMillis
+                        val endMillis = dateRangePickerState.selectedEndDateMillis
+                        if (startMillis != null && endMillis != null) {
+                            val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                            startDate = formatter.format(Date(startMillis))
+                            endDate = formatter.format(Date(endMillis))
+                        }
+                        showDatePicker = false
+                    }
+                ) { Text("Conferma", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Annulla") }
+            }
+        ) {
+            DateRangePicker(
+                state = dateRangePickerState,
+                title = { Text(text = "Seleziona le date del viaggio", modifier = Modifier.padding(16.dp)) },
+                headline = { Text(text = "Partenza - Ritorno", modifier = Modifier.padding(start = 16.dp, bottom = 16.dp)) },
+                showModeToggle = false,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
+        // --- CAROSELLO IMMAGINI ---
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -86,10 +126,7 @@ fun CreateTripScreen(
             if (imageUris.isNotEmpty()) {
                 val pagerState = rememberPagerState(pageCount = { imageUris.size })
 
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize()
-                ) { page ->
+                HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                     AsyncImage(
                         model = imageUris[page],
                         contentDescription = "Immagine Viaggio $page",
@@ -106,50 +143,17 @@ fun CreateTripScreen(
                         .background(Color.Black.copy(alpha = 0.6f))
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text(
-                        text = "${pagerState.currentPage + 1}/${imageUris.size}",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("${pagerState.currentPage + 1}/${imageUris.size}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
-
             } else {
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.Add,
-                            contentDescription = "Add Photo",
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        Icon(Icons.Default.Add, contentDescription = "Add Photo", modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "Tocca per aggiungere fino a 5 foto dalla galleria",
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 14.sp
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        FilledTonalButton(
-                            onClick = {
-                                imageUris = listOf(
-                                    Uri.parse("https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80"),
-                                    Uri.parse("https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=800&q=80"),
-                                    Uri.parse("https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=800&q=80")
-                                )
-                            },
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Usa 3 Foto Demo HD", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
+                        Text("Tocca per aggiungere foto", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
                     }
                 }
             }
@@ -172,6 +176,7 @@ fun CreateTripScreen(
             Icon(Icons.Default.ArrowBack, contentDescription = "Indietro", tint = Color.Black)
         }
 
+        // --- FORM SOVRAPPOSTO ---
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -188,8 +193,7 @@ fun CreateTripScreen(
                 value = title, onValueChange = { title = it },
                 label = { Text("Titolo (es. Fuga alle Maldive)") },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.LightGray)
+                shape = RoundedCornerShape(16.dp)
             )
 
             OutlinedTextField(
@@ -197,17 +201,56 @@ fun CreateTripScreen(
                 label = { Text("Località Esatta") },
                 leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.LightGray)
+                shape = RoundedCornerShape(16.dp)
             )
+
+            // --- SELETTORE DATE (Cliccabile) ---
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Box(modifier = Modifier.weight(1f).clickable { showDatePicker = true }) {
+                    OutlinedTextField(
+                        value = startDate.ifEmpty { "Seleziona" },
+                        onValueChange = {},
+                        readOnly = true,
+                        enabled = false, // Lo disabilita all'input ma lascia passare il click al Box
+                        label = { Text("Data Inizio") },
+                        leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                            disabledBorderColor = Color.Gray,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            disabledLeadingIconColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
+                Box(modifier = Modifier.weight(1f).clickable { showDatePicker = true }) {
+                    OutlinedTextField(
+                        value = endDate.ifEmpty { "Seleziona" },
+                        onValueChange = {},
+                        readOnly = true,
+                        enabled = false,
+                        label = { Text("Data Fine") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                            disabledBorderColor = Color.Gray,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                }
+            }
+            if (startDate.isEmpty()) {
+                Text("Tocca i campi per aprire il calendario", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 4.dp))
+            }
 
             OutlinedTextField(
                 value = description, onValueChange = { description = it },
                 label = { Text("Descrizione dell'esperienza") },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 4,
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.LightGray)
+                shape = RoundedCornerShape(16.dp)
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -217,35 +260,15 @@ fun CreateTripScreen(
                     leadingIcon = { Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.LightGray)
+                    shape = RoundedCornerShape(16.dp)
                 )
                 OutlinedTextField(
                     value = spots, onValueChange = { spots = it },
-                    label = { Text("Posti") },
+                    label = { Text("Posti totali") },
                     leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.LightGray)
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                OutlinedTextField(
-                    value = startDate, onValueChange = { startDate = it },
-                    label = { Text("Inizio (YYYY-MM-DD)") },
-                    leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.LightGray)
-                )
-                OutlinedTextField(
-                    value = endDate, onValueChange = { endDate = it },
-                    label = { Text("Fine (YYYY-MM-DD)") },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.LightGray)
+                    shape = RoundedCornerShape(16.dp)
                 )
             }
 
@@ -257,12 +280,10 @@ fun CreateTripScreen(
 
             Button(
                 onClick = {
-                    // --- MODIFICA APPLICATA QUI: aggiunta la variabile context! ---
                     viewModel.createTrip(context, tokenUtente, title, description, price, startDate, endDate, spots, location, imageUris)
                 },
                 modifier = Modifier.fillMaxWidth().height(60.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 enabled = !viewModel.isLoading
             ) {
                 if (viewModel.isLoading) {

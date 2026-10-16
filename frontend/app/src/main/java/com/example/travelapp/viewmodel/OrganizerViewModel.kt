@@ -6,14 +6,14 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.travelapp.network.RetrofitClient
-import com.example.travelapp.network.TripResponse
+import com.example.travelapp.network.TripDTO
 import kotlinx.coroutines.launch
 
 class OrganizerViewModel : ViewModel() {
 
     var isLoading by mutableStateOf(true)
     var errorMessage by mutableStateOf<String?>(null)
-    var myTrips by mutableStateOf<List<TripResponse>>(emptyList())
+    var myTrips by mutableStateOf<List<TripDTO>>(emptyList())
 
     var totalOrders by mutableStateOf(0)
 

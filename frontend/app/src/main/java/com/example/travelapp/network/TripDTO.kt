@@ -2,7 +2,7 @@ package com.example.travelapp.network
 
 import com.google.gson.annotations.SerializedName
 
-data class TripResponse(
+data class TripDTO(
     val id: Long,
     val title: String,
     val description: String?,
