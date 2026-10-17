@@ -1,15 +1,16 @@
 package com.example.travelapp.network
 
-import com.google.gson.annotations.SerializedName // <-- Import fondamentale da aggiungere
+import com.google.gson.annotations.SerializedName
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
-import retrofit2.http.POST
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Multipart
+import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -46,6 +47,13 @@ interface ApiService {
         @Path("id") tripId: Long
     ): Response<TripDTO>
 
+    @PUT("/api/trips/{id}")
+    suspend fun updateTrip(
+        @Header("Authorization") token: String,
+        @Path("id") tripId: Long,
+        @Body request: TripRequest
+    ): Response<TripDTO>
+
     @DELETE("/api/trips/{id}")
     suspend fun deleteTrip(
         @Header("Authorization") token: String,
@@ -70,15 +78,20 @@ interface ApiService {
         @Header("Authorization") token: String
     ): retrofit2.Response<List<com.example.travelapp.network.ReservationDTO>>
 
+    @GET("/api/reservations/my-reservations")
+    suspend fun getMyReservations(
+        @Header("Authorization") token: String
+    ): Response<List<com.example.travelapp.network.ReservationDTO>>
+
     // --- LISTE PREFERITI ---
 
-    // 1. Legge le liste dell'utente
+    // 1. Legge le liste dell'utente (create da lui o condivise con lui)
     @GET("/api/lists/my-lists")
     suspend fun getMyLists(
         @Header("Authorization") token: String
     ): retrofit2.Response<List<com.example.travelapp.network.ItineraryListDTO>>
 
-    // 2. Crea una nuova lista
+    // 2. Crea una nuova lista (PRIVATE, SHARED, PUBLIC)
     @POST("/api/lists/create")
     suspend fun createList(
         @Header("Authorization") token: String,
@@ -94,13 +107,22 @@ interface ApiService {
         @Path("tripId") tripId: Long
     ): retrofit2.Response<com.example.travelapp.network.ItineraryListDTO>
 
+    // 4. Condivide una lista con un amico tramite email
+    @POST("/api/lists/{listId}/share")
+    suspend fun shareList(
+        @Header("Authorization") token: String,
+        @Path("listId") listId: Long,
+        @Query("friendEmail") friendEmail: String
+    ): retrofit2.Response<ResponseBody>
+
+    // 5. Dettagli singola lista
     @GET("/api/lists/{listId}")
     suspend fun getListDetails(
         @Header("Authorization") token: String,
         @Path("listId") listId: Long
     ): retrofit2.Response<com.example.travelapp.network.ItineraryListDTO>
 
-    // 5. Scarica tutti gli oggetti TripDTO completi che sono dentro una lista
+    // 6. Scarica tutti gli oggetti TripDTO completi dentro una lista
     @GET("/api/lists/{listId}/trips")
     suspend fun getTripsInList(
         @Header("Authorization") token: String,
@@ -108,17 +130,14 @@ interface ApiService {
     ): retrofit2.Response<List<TripDTO>>
 }
 
-
-
 data class TripRequest(
     val title: String,
     val description: String,
     val price: Double,
-    val startDate: String, // Formato richiesto da Spring: "YYYY-MM-DD"
-    val endDate: String,   // Formato richiesto da Spring: "YYYY-MM-DD"
+    val startDate: String,
+    val endDate: String,
     val availableSpots: Int,
     val location: String,
-
     @SerializedName("imageUrls")
     val imageUrls: List<String>? = null
 )
@@ -128,11 +147,8 @@ data class RegisterRequest(
     val email: String,
     val password: String,
     val role: String,
-
-    // Assicuriamo che il JSON inviato abbia esattamente questa chiave
     @SerializedName("partitaIva")
     val partitaIva: String? = null,
-
     @SerializedName("telefono")
     val telefono: String? = null
 )

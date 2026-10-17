@@ -7,6 +7,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -19,9 +20,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.travelapp.network.TripRequest
 import com.example.travelapp.viewmodel.TripDetailViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -34,9 +37,17 @@ fun TripDetailScreen(
     onNavigateBack: () -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var isFavorite by remember { mutableStateOf(false) } // Potremo collegarla in futuro a viewModel.isTripInFavorites()
+    var showEditDialog by remember { mutableStateOf(false) } // NUOVO STATO
+    var isFavorite by remember { mutableStateOf(false) }
 
     var spotsToBook by remember { mutableStateOf(1) }
+
+    // Variabili di stato temporanee per il form di modifica
+    var editTitle by remember { mutableStateOf("") }
+    var editDescription by remember { mutableStateOf("") }
+    var editPrice by remember { mutableStateOf("") }
+    var editLocation by remember { mutableStateOf("") }
+    var editAvailableSpots by remember { mutableStateOf("") }
 
     LaunchedEffect(tripId) {
         viewModel.fetchTripDetail(tokenUtente, tripId)
@@ -48,7 +59,18 @@ fun TripDetailScreen(
 
     val trip = viewModel.trip
 
-    // --- POPUP: ELIMINA PACCHETTO (AGENZIA) ---
+    // Popola i campi di modifica quando i dati sono pronti o si apre il dialog
+    LaunchedEffect(trip, showEditDialog) {
+        if (trip != null && showEditDialog) {
+            editTitle = trip.title
+            editDescription = trip.description ?: ""
+            editPrice = trip.price.toString()
+            editLocation = trip.location ?: ""
+            editAvailableSpots = trip.availableSpots.toString()
+        }
+    }
+
+    // --- POPUP: ELIMINA PACCHETTO ---
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -66,6 +88,89 @@ fun TripDetailScreen(
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) { Text("Annulla") }
             }
+        )
+    }
+
+    // --- POPUP: MODIFICA PACCHETTO ---
+    if (showEditDialog && trip != null) {
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = { Text("Modifica Viaggio", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = editTitle,
+                        onValueChange = { editTitle = it },
+                        label = { Text("Titolo") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editLocation,
+                        onValueChange = { editLocation = it },
+                        label = { Text("Location") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editPrice,
+                        onValueChange = { editPrice = it },
+                        label = { Text("Prezzo (€)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editAvailableSpots,
+                        onValueChange = { editAvailableSpots = it },
+                        label = { Text("Posti Disponibili") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editDescription,
+                        onValueChange = { editDescription = it },
+                        label = { Text("Descrizione") },
+                        modifier = Modifier.fillMaxWidth().height(100.dp),
+                        maxLines = 4
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val request = TripRequest(
+                            title = editTitle,
+                            description = editDescription,
+                            price = editPrice.toDoubleOrNull() ?: trip.price,
+                            startDate = trip.startDate,
+                            endDate = trip.endDate,
+                            availableSpots = editAvailableSpots.toIntOrNull() ?: trip.availableSpots,
+                            location = editLocation,
+                            imageUrls = trip.imageUrls
+                        )
+                        viewModel.updateTrip(tokenUtente, tripId, request)
+                        showEditDialog = false
+                    },
+                    enabled = !viewModel.isUpdating
+                ) {
+                    if (viewModel.isUpdating) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White)
+                    else Text("Salva Modifiche")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditDialog = false }) { Text("Annulla") }
+            }
+        )
+    }
+
+    // --- POPUP: ESITO MODIFICA ---
+    if (viewModel.updateMessage != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearUpdateMessage() },
+            title = { Text("Esito Aggiornamento", fontWeight = FontWeight.Bold) },
+            text = { Text(viewModel.updateMessage!!) },
+            confirmButton = { Button(onClick = { viewModel.clearUpdateMessage() }) { Text("OK") } }
         )
     }
 
@@ -91,7 +196,7 @@ fun TripDetailScreen(
     if (viewModel.showFavoriteDialog) {
         var isCreatingNew by remember { mutableStateOf(false) }
         var newListName by remember { mutableStateOf("") }
-        var newListVisibility by remember { mutableStateOf("PRIVATE") } // Default
+        var newListVisibility by remember { mutableStateOf("PRIVATE") }
 
         AlertDialog(
             onDismissRequest = { viewModel.showFavoriteDialog = false },
@@ -210,15 +315,24 @@ fun TripDetailScreen(
                         }
 
                         if (ruoloUtente == "ORGANIZZATORE") {
-                            Button(
-                                onClick = { showDeleteDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier.height(54.dp)
-                            ) {
-                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Elimina Annuncio", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = { showEditDialog = true }, // APRE IL POPUP DI MODIFICA
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier.height(54.dp)
+                                ) {
+                                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(20.dp))
+                                }
+
+                                Button(
+                                    onClick = { showDeleteDialog = true },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier.height(54.dp)
+                                ) {
+                                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
+                                }
                             }
                         } else {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -425,7 +539,6 @@ fun TripDetailScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Indietro", tint = Color.Black)
                     }
 
-                    // --- PULSANTE PREFERITI CON LOGICA POPUP ---
                     if (ruoloUtente != "ORGANIZZATORE") {
                         IconButton(
                             onClick = {

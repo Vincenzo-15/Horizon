@@ -1,102 +1,157 @@
 package com.example.travelapp.ui.home
 
-import androidx.compose.animation.core.*
+import android.content.Context
+import android.content.Intent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.travelapp.ui.theme.TravelAppTheme
+import com.example.travelapp.network.ReservationDTO
+import com.example.travelapp.network.TripDTO
 import com.example.travelapp.viewmodel.HomeViewModel
+import kotlin.math.roundToInt
 
-fun Modifier.bounceClick(
-    scaleDown: Float = 0.92f,
-    onClick: () -> Unit
-) = composed {
-    var isPressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) scaleDown else 1f,
-        label = "BounceAnimation"
-    )
+// Palette Colori Ispirata a TripAdvisor
+val TripGreen = Color(0xFF00AA6C)
+val TripDarkGreen = Color(0xFF004F32)
+val TripBlack = Color(0xFF1A1A1A)
+val TripWarmBg = Color(0xFFF4F6F5)
+val TripAmber = Color(0xFFFFB800)
+val TripOrangeActivity = Color(0xFFE65100)
 
-    this
-        .graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-        }
-        .clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = onClick
-        )
-        .pointerInput(isPressed) {
-            awaitPointerEventScope {
-                isPressed = if (isPressed) {
-                    waitForUpOrCancellation()
-                    false
-                } else {
-                    awaitFirstDown(false)
-                    true
-                }
-            }
-        }
+fun isActivityOrExcursion(trip: TripDTO): Boolean {
+    val sameDay = !trip.startDate.isNullOrBlank() && trip.startDate == trip.endDate
+    val text = "${trip.title} ${trip.description ?: ""}".lowercase()
+    val hasActivityKeyword = text.contains("attività") ||
+            text.contains("attivita") ||
+            text.contains("escursion") ||
+            text.contains("tour") ||
+            text.contains("visita") ||
+            text.contains("degustazion") ||
+            text.contains("biglietto")
+    return sameDay || hasActivityKeyword
 }
 
-fun Modifier.shimmerEffect(): Modifier = composed {
-    var size by remember { mutableStateOf(IntSize.Zero) }
-    val transition = rememberInfiniteTransition(label = "shimmer")
-    val startOffsetX by transition.animateFloat(
-        initialValue = -2 * size.width.toFloat(),
-        targetValue = 2 * size.width.toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "shimmer_animation"
-    )
+// Generatore formato standard iCalendar (.ics) per esportazione viaggi e attività
+fun buildIcsContent(reservation: ReservationDTO, trip: TripDTO?): String {
+    val rawStart = (trip?.startDate ?: reservation.reservationDate.take(10)).replace("-", "")
+    val rawEnd = (trip?.endDate ?: rawStart).replace("-", "")
+    val location = trip?.location ?: "Destinazione Horizon"
+    val description = "Prenotazione #${reservation.id} - Posti: ${reservation.bookedSpots} - Totale: €${reservation.totalPaid}"
 
-    background(
-        brush = Brush.linearGradient(
-            colors = listOf(
-                Color(0xFFE0E0E0),
-                Color(0xFFF5F5F5),
-                Color(0xFFE0E0E0)
-            ),
-            start = Offset(startOffsetX, 0f),
-            end = Offset(startOffsetX + size.width.toFloat(), size.height.toFloat())
-        )
-    ).onGloballyPositioned { size = it.size }
+    return """
+        BEGIN:VCALENDAR
+        VERSION:2.0
+        PRODID:-//Horizon Travel App//IT
+        BEGIN:VEVENT
+        UID:horizon-res-${reservation.id}@horizontravel.it
+        DTSTART;VALUE=DATE:$rawStart
+        DTEND;VALUE=DATE:$rawEnd
+        SUMMARY:${reservation.tripTitle}
+        LOCATION:$location
+        DESCRIPTION:$description
+        STATUS:${reservation.status}
+        END:VEVENT
+        END:VCALENDAR
+    """.trimIndent()
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+fun shareIcsCalendar(context: Context, icsContent: String, title: String) {
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/calendar"
+        putExtra(Intent.EXTRA_SUBJECT, "Calendario Viaggio: $title.ics")
+        putExtra(Intent.EXTRA_TEXT, icsContent)
+    }
+    context.startActivity(Intent.createChooser(sendIntent, "Esporta file .ics"))
+}
+
+data class FamousDestination(
+    val name: String,
+    val country: String,
+    val tagline: String,
+    val description: String,
+    val imageUrl: String
+)
+
+val famousDestinations = listOf(
+    FamousDestination(
+        name = "Roma",
+        country = "Italia",
+        tagline = "La Città Eterna tra storia e sapori",
+        description = "Capitale d'Italia e culla di una delle civiltà più antiche del mondo. Dal Colosseo ai vicoli di Trastevere, Roma offre un museo a cielo aperto, tour enogastronomici autentici ed escursioni storiche indimenticabili.",
+        imageUrl = "https://images.unsplash.com/photo-1552832230-c0197dd311b5?auto=format&fit=crop&w=800&q=80"
+    ),
+    FamousDestination(
+        name = "Losanna",
+        country = "Svizzera",
+        tagline = "Perla alpina affacciata sul Lago di Ginevra",
+        description = "Adagiata sulle rive del Lago Lemano con vista spettacolare sulle Alpi, Losanna unisce il fascino medievale della Cité, i vigneti terrazzati di Lavaux (Patrimonio UNESCO) e lo spirito della Capitale Olimpica.",
+        imageUrl = "https://images.unsplash.com/photo-1527668752968-14dc70a27c95?auto=format&fit=crop&w=800&q=80"
+    ),
+    FamousDestination(
+        name = "Parigi",
+        country = "Francia",
+        tagline = "Arte, cultura e crociere sulla Senna",
+        description = "La Ville Lumière incanta con i suoi boulevard alberati, i capolavori del Louvre e il fascino bohémien di Montmartre. Ideale per weekend culturali, tour architettonici ed esperienze gastronomiche d'eccellenza.",
+        imageUrl = "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=800&q=80"
+    ),
+    FamousDestination(
+        name = "Tokyo",
+        country = "Giappone",
+        tagline = "Dove i templi antichi incontrano il futuro",
+        description = "Una metropoli straordinaria che fonde santuari millenari immersi nella natura, quartieri illuminati dai neon come Shinjuku e una cultura culinaria unica al mondo.",
+        imageUrl = "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=800&q=80"
+    ),
+    FamousDestination(
+        name = "Amalfi",
+        country = "Italia",
+        tagline = "Scogliere a picco sul mare e borghi colorati",
+        description = "La Costiera Amalfitana regala panorami mozzafiato, escursioni in barca verso Capri, trekking sul Sentiero degli Dei e profumi di limoni lungo una delle coste più amate al mondo.",
+        imageUrl = "https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&w=800&q=80"
+    )
+)
+
+fun resolveTripImageUrl(trip: TripDTO?): String {
+    val rawUrl = trip?.imageUrls?.firstOrNull()
+    if (!rawUrl.isNullOrBlank() && rawUrl.startsWith("http")) {
+        return rawUrl.replace("localhost", "10.0.2.2")
+    }
+    val loc = "${trip?.location ?: ""} ${trip?.title ?: ""}".lowercase()
+    return when {
+        loc.contains("roma") -> "https://images.unsplash.com/photo-1552832230-c0197dd311b5?auto=format&fit=crop&w=800&q=80"
+        loc.contains("losanna") || loc.contains("svizzera") -> "https://images.unsplash.com/photo-1527668752968-14dc70a27c95?auto=format&fit=crop&w=800&q=80"
+        loc.contains("parigi") -> "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=800&q=80"
+        loc.contains("tokyo") || loc.contains("giappone") -> "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=800&q=80"
+        else -> "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=800&q=80"
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
@@ -104,258 +159,1465 @@ fun HomeScreen(
     onTripClick: (Long) -> Unit = {},
     onNavigateToProfile: () -> Unit = {}
 ) {
-    // --- VARIABILI DI STATO ---
     var selectedTab by remember { mutableStateOf("Home") }
-    var viewingListId by remember { mutableStateOf<Long?>(null) } // <-- NUOVO: Traccia se siamo dentro una lista
+    var viewingListId by remember { mutableStateOf<Long?>(null) }
+    var selectedDestination by remember { mutableStateOf<FamousDestination?>(null) }
+
+    // --- STATI DI RICERCA E FILTRI AVANZATI ---
+    var showSearchSheet by remember { mutableStateOf(false) }
+    var showNotificationsSheet by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedOfferType by remember { mutableStateOf("TUTTI") } // "TUTTI", "VIAGGI", "ATTIVITA"
+    var maxPriceFilter by remember { mutableStateOf<Double?>(null) }
+    var minParticipants by remember { mutableStateOf(1) }
+    var sortOption by remember { mutableStateOf("RATING") } // "RATING", "PRICE_ASC", "PRICE_DESC"
+
+    val isSearchActive = searchQuery.isNotBlank() ||
+            selectedOfferType != "TUTTI" ||
+            maxPriceFilter != null ||
+            minParticipants > 1 ||
+            sortOption != "RATING"
+
+    // Stato per anteprima ed esportazione file .ics
+    var icsPreviewReservation by remember { mutableStateOf<ReservationDTO?>(null) }
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         if (tokenUtente.isNotEmpty()) {
             viewModel.fetchTrips(tokenUtente)
+            viewModel.fetchMyReservations(tokenUtente)
+        }
+    }
+
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == "Viaggi" && tokenUtente.isNotEmpty()) {
+            viewModel.fetchMyReservations(tokenUtente)
+        }
+    }
+
+    // Calcolo dinamico dei risultati filtrati e ordinati
+    val filteredTrips = remember(
+        viewModel.trips,
+        searchQuery,
+        selectedOfferType,
+        maxPriceFilter,
+        minParticipants,
+        sortOption
+    ) {
+        val base = viewModel.trips.filter { trip ->
+            val q = searchQuery.trim()
+            val matchesQuery = q.isEmpty() ||
+                    trip.title.contains(q, ignoreCase = true) ||
+                    (trip.location?.contains(q, ignoreCase = true) == true) ||
+                    (trip.description?.contains(q, ignoreCase = true) == true)
+
+            val isActivity = isActivityOrExcursion(trip)
+            val matchesType = when (selectedOfferType) {
+                "VIAGGI" -> !isActivity
+                "ATTIVITA" -> isActivity
+                else -> true
+            }
+
+            val matchesPrice = maxPriceFilter == null || trip.price <= maxPriceFilter!!
+            val matchesSpots = trip.availableSpots >= minParticipants
+
+            matchesQuery && matchesType && matchesSpots && matchesPrice
+        }
+
+        when (sortOption) {
+            "PRICE_ASC" -> base.sortedBy { it.price }
+            "PRICE_DESC" -> base.sortedByDescending { it.price }
+            else -> base.sortedByDescending { it.averageRating }
         }
     }
 
     Scaffold(
+        containerColor = TripWarmBg,
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+            NavigationBar(
+                containerColor = Color.White,
+                tonalElevation = 12.dp
+            ) {
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Home, "Home") },
-                    label = { Text("Home") },
+                    icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                    label = { Text("Home", fontWeight = FontWeight.SemiBold) },
                     selected = selectedTab == "Home",
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = TripGreen,
+                        selectedTextColor = TripGreen,
+                        indicatorColor = TripGreen.copy(alpha = 0.15f)
+                    ),
                     onClick = {
                         selectedTab = "Home"
-                        viewingListId = null // Resetta la vista lista
+                        selectedDestination = null
+                        viewingListId = null
                     }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Send, "Chat") },
-                    label = { Text("Chat") },
-                    selected = false,
-                    onClick = {} // Da implementare
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.DateRange, "Schedule") },
-                    label = { Text("Viaggi") },
-                    selected = false,
-                    onClick = {} // Da implementare
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Favorite, "Saved") },
-                    label = { Text("Preferiti") },
+                    icon = { Icon(Icons.Default.FavoriteBorder, contentDescription = "Preferiti") },
+                    label = { Text("Preferiti", fontWeight = FontWeight.SemiBold) },
                     selected = selectedTab == "Preferiti",
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = TripGreen,
+                        selectedTextColor = TripGreen,
+                        indicatorColor = TripGreen.copy(alpha = 0.15f)
+                    ),
                     onClick = {
                         selectedTab = "Preferiti"
-                        viewingListId = null // Assicurati di tornare alla vista principale dei preferiti
+                        selectedDestination = null
+                        viewingListId = null
                     }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Person, "Profile") },
-                    label = { Text("Profilo") },
-                    selected = false,
+                    icon = { Icon(Icons.Outlined.DateRange, contentDescription = "Viaggi") },
+                    label = { Text("Viaggi", fontWeight = FontWeight.SemiBold) },
+                    selected = selectedTab == "Viaggi",
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = TripGreen,
+                        selectedTextColor = TripGreen,
+                        indicatorColor = TripGreen.copy(alpha = 0.15f)
+                    ),
+                    onClick = {
+                        selectedTab = "Viaggi"
+                        selectedDestination = null
+                    }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Person, contentDescription = "Profilo") },
+                    label = { Text("Profilo", fontWeight = FontWeight.SemiBold) },
+                    selected = selectedTab == "Profilo",
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = TripGreen,
+                        selectedTextColor = TripGreen,
+                        indicatorColor = TripGreen.copy(alpha = 0.15f)
+                    ),
                     onClick = { onNavigateToProfile() }
                 )
             }
         }
     ) { paddingValues ->
-
-        Box(modifier = Modifier.padding(paddingValues)) {
-
-            // --- MOSTRA LA SCHERMATA CATALOGO SE È SELEZIONATA LA "HOME" ---
-            if (selectedTab == "Home") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                        .verticalScroll(rememberScrollState())
-                        .padding(top = 24.dp, bottom = 24.dp)
-                ) {
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Person, contentDescription = "Profile", tint = MaterialTheme.colorScheme.primary)
+        Box(
+            modifier = Modifier
+                .padding(paddingValues)
+                .fillMaxSize()
+        ) {
+            when (selectedTab) {
+                "Home" -> {
+                    if (selectedDestination != null) {
+                        CityDetailScreen(
+                            destination = selectedDestination!!,
+                            allTrips = viewModel.trips,
+                            onBackClick = { selectedDestination = null },
+                            onTripClick = { trip ->
+                                viewModel.markTripAsViewed(trip)
+                                onTripClick(trip.id)
                             }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text("Ciao, Viaggiatore!", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                        Row {
-                            IconButton(onClick = {}) { Icon(Icons.Default.Settings, contentDescription = "Impostazioni") }
-                            IconButton(onClick = {}) { Icon(Icons.Default.Notifications, contentDescription = "Notifiche") }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Column(modifier = Modifier.padding(horizontal = 24.dp)) {
-                        Text("Esplora Fantastiche", fontSize = 28.sp, fontWeight = FontWeight.Normal)
-                        Text("Destinazioni!", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
-                    }
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(value = "", onValueChange = {}, placeholder = { Text("Dove vuoi andare?") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Cerca") }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(20.dp))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Box(modifier = Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)).bounceClick {  }, contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Menu, contentDescription = "Filtri", tint = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    LazyRow(contentPadding = PaddingValues(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        val categories = listOf("Tutte", "Mare", "Montagna", "Città d'arte", "Avventura")
-                        items(categories.size) { index ->
-                            val isSelected = index == 0
-                            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 1.dp), modifier = Modifier.bounceClick { }) {
-                                Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    val iconTint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
-                                    Icon(Icons.Default.Place, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(categories[index], fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(32.dp))
-
-                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("I Più Popolari", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Text("Vedi tutto", fontSize = 14.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { })
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    if (viewModel.isLoading) {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 24.dp),
-                            horizontalArrangement = Arrangement.spacedBy(20.dp)
-                        ) {
-                            items(3) {
-                                Column(modifier = Modifier.width(260.dp)) {
-                                    Box(modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(20.dp)).shimmerEffect())
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Box(modifier = Modifier.fillMaxWidth(0.8f).height(20.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect())
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Box(modifier = Modifier.fillMaxWidth(0.5f).height(16.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect())
-                                }
-                            }
-                        }
-                    } else if (viewModel.errorMessage != null) {
-                        Text(text = viewModel.errorMessage!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 24.dp))
-                    } else if (viewModel.trips.isEmpty()) {
-                        Text(text = "Nessun viaggio disponibile al momento.", color = Color.Gray, modifier = Modifier.padding(horizontal = 24.dp))
+                        )
                     } else {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 24.dp),
-                            horizontalArrangement = Arrangement.spacedBy(20.dp)
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 32.dp)
                         ) {
-                            items(viewModel.trips.size) { index ->
-                                val trip = viewModel.trips[index]
-
-                                Column(
+                            // 1. HEADER TRIPADVISOR: BENVENUTO + CAMPANELLA NOTIFICHE
+                            item {
+                                Row(
                                     modifier = Modifier
-                                        .width(260.dp)
-                                        .bounceClick { onTripClick(trip.id) }
+                                        .fillMaxWidth()
+                                        .padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(180.dp)
-                                            .clip(RoundedCornerShape(20.dp))
-                                            .background(Color.LightGray)
-                                    ) {
-                                        val coverUrl = trip.imageUrls?.firstOrNull()
-                                        if (!coverUrl.isNullOrEmpty()) {
-                                            AsyncImage(
-                                                model = coverUrl,
-                                                contentDescription = trip.title,
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier.fillMaxSize()
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(10.dp)
+                                                    .clip(CircleShape)
+                                                    .background(TripGreen)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "HORIZON TRAVEL",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = TripGreen,
+                                                letterSpacing = 1.sp
                                             )
                                         }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Dove andiamo oggi?",
+                                            fontSize = 26.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = TripBlack
+                                        )
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White)
+                                            .clickable { showNotificationsSheet = true },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Notifications,
+                                            contentDescription = "Notifiche",
+                                            tint = TripBlack,
+                                            modifier = Modifier.size(26.dp)
+                                        )
                                         Box(
                                             modifier = Modifier
                                                 .align(Alignment.TopEnd)
-                                                .padding(12.dp)
-                                                .size(36.dp)
+                                                .padding(top = 10.dp, end = 12.dp)
+                                                .size(9.dp)
                                                 .clip(CircleShape)
-                                                .background(Color.White.copy(alpha = 0.85f))
-                                                .clickable { },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Default.FavoriteBorder, contentDescription = "Salva", tint = Color.Black, modifier = Modifier.size(20.dp))
-                                        }
+                                                .background(Color(0xFFE53935))
+                                        )
                                     }
-
-                                    Spacer(modifier = Modifier.height(12.dp))
-
-                                    Text(text = trip.title, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.LocationOn, contentDescription = "Posizione", tint = Color.Gray, modifier = Modifier.size(14.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(trip.location ?: "N/D", color = Color.Gray, fontSize = 13.sp)
-                                    }
-
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.Star, contentDescription = "Star", tint = Color(0xFFFFC107), modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(trip.averageRating.toString(), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Text(" (${trip.reviewCount} recensioni)", color = Color.Gray, fontSize = 13.sp)
-                                    }
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(text = "Da ${trip.price}€ / persona", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
-                        }
-                    }
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                            // 2. BARRA DI RICERCA A PILLOLA INTERATTIVA
+                            item {
+                                Surface(
+                                    shape = RoundedCornerShape(100.dp),
+                                    color = Color.White,
+                                    shadowElevation = 6.dp,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp, vertical = 8.dp)
+                                        .clickable { showSearchSheet = true }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.Search,
+                                            contentDescription = "Cerca",
+                                            tint = TripGreen,
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = if (searchQuery.isBlank()) "Cerca destinazione, viaggio o attività"
+                                                else "\"$searchQuery\"",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp,
+                                                color = TripBlack,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            val subSummary = buildList {
+                                                if (selectedOfferType != "TUTTI") add(if (selectedOfferType == "VIAGGI") "Solo Viaggi" else "Solo Attività")
+                                                if (maxPriceFilter != null) add("Max €${maxPriceFilter!!.toInt()}")
+                                                if (minParticipants > 1) add("$minParticipants+ posti")
+                                            }.joinToString(" • ").ifEmpty { "Ovunque • Qualsiasi budget • Filtri" }
 
-                    Text("Esplora per Città", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 24.dp))
-                    Spacer(modifier = Modifier.height(16.dp))
+                                            Text(
+                                                text = subSummary,
+                                                fontSize = 13.sp,
+                                                color = if (isSearchActive) TripGreen else Color.Gray,
+                                                fontWeight = if (isSearchActive) FontWeight.SemiBold else FontWeight.Normal
+                                            )
+                                        }
+                                        if (isSearchActive) {
+                                            IconButton(onClick = {
+                                                searchQuery = ""
+                                                maxPriceFilter = null
+                                                selectedOfferType = "TUTTI"
+                                                minParticipants = 1
+                                                sortOption = "RATING"
+                                            }) {
+                                                Icon(Icons.Default.Close, contentDescription = "Reset", tint = Color.Gray)
+                                            }
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(38.dp)
+                                                    .clip(CircleShape)
+                                                    .background(TripWarmBg),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(Icons.Default.Search, contentDescription = null, tint = TripBlack, modifier = Modifier.size(18.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
 
-                    LazyRow(contentPadding = PaddingValues(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                        val cities = listOf("Roma", "Parigi", "Londra", "Tokyo", "New York")
-                        items(cities.size) { index ->
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.bounceClick { }) {
-                                Box(modifier = Modifier.size(80.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)))
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(cities[index], fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            // SE NON CI SONO RICERCHE ATTIVE, MOSTRIAMO I CAROSELLI DI SCOPERTA
+                            if (!isSearchActive) {
+                                // 3. CAROSELLO ORIZZONTALE: "VISTI DI RECENTE"
+                                if (viewModel.recentlyViewedTrips.isNotEmpty()) {
+                                    item {
+                                        SectionHeader(
+                                            title = "Visti di recente",
+                                            subtitle = "Riprendi i viaggi e le attività che hai consultato"
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+
+                                        LazyRow(
+                                            contentPadding = PaddingValues(horizontal = 24.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            items(viewModel.recentlyViewedTrips) { trip ->
+                                                RecentlyViewedTripCard(
+                                                    trip = trip,
+                                                    onClick = {
+                                                        viewModel.markTripAsViewed(trip)
+                                                        onTripClick(trip.id)
+                                                    }
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(28.dp))
+                                    }
+                                }
+
+                                // 4. CAROSELLO ORIZZONTALE: "METE FAMOSE"
+                                item {
+                                    SectionHeader(
+                                        title = "Mete famose",
+                                        subtitle = "Tocca una città per scoprire storia, viaggi e attività"
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 24.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        items(famousDestinations) { destination ->
+                                            FamousDestinationCard(
+                                                destination = destination,
+                                                onClick = { selectedDestination = destination }
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(28.dp))
+                                }
+                            } else {
+                                // BARRA RIEPILOGO RISULTATI DI RICERCA ATTIVA
+                                item {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 24.dp, vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "${filteredTrips.size} risultati trovati",
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = TripBlack
+                                        )
+                                        TextButton(onClick = {
+                                            searchQuery = ""
+                                            maxPriceFilter = null
+                                            selectedOfferType = "TUTTI"
+                                            minParticipants = 1
+                                            sortOption = "RATING"
+                                        }) {
+                                            Text("Azzera filtri", color = TripGreen, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 5. CATALOGO GENERALE CON FILTRO VIAGGI VS ATTIVITÀ
+                            item {
+                                if (!isSearchActive) {
+                                    SectionHeader(
+                                        title = "Esplora Viaggi e Attività",
+                                        subtitle = "Filtra tra pacchetti di più giorni ed escursioni in giornata"
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                }
+
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 24.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    item {
+                                        OfferTypeChip("Tutti", selectedOfferType == "TUTTI") { selectedOfferType = "TUTTI" }
+                                    }
+                                    item {
+                                        OfferTypeChip("✈️ Viaggi", selectedOfferType == "VIAGGI") { selectedOfferType = "VIAGGI" }
+                                    }
+                                    item {
+                                        OfferTypeChip("🎟️ Attività & Escursioni", selectedOfferType == "ATTIVITA") { selectedOfferType = "ATTIVITA" }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+
+                            if (viewModel.isLoading) {
+                                item {
+                                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                        CircularProgressIndicator(color = TripGreen)
+                                    }
+                                }
+                            } else if (viewModel.errorMessage != null) {
+                                item {
+                                    Text(
+                                        text = viewModel.errorMessage!!,
+                                        color = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.padding(horizontal = 24.dp)
+                                    )
+                                }
+                            } else {
+                                if (filteredTrips.isEmpty()) {
+                                    item {
+                                        Surface(
+                                            shape = RoundedCornerShape(18.dp),
+                                            color = Color.White,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 24.dp, vertical = 16.dp)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(28.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Icon(Icons.Outlined.Search, contentDescription = null, tint = TripGreen, modifier = Modifier.size(48.dp))
+                                                Spacer(modifier = Modifier.height(12.dp))
+                                                Text(
+                                                    text = "Nessuna offerta trovata",
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    fontSize = 17.sp,
+                                                    color = TripBlack
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = "Prova ad ampliare il budget o rimuovere qualche filtro di ricerca.",
+                                                    fontSize = 13.sp,
+                                                    color = Color.Gray
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    items(filteredTrips) { trip ->
+                                        TripAdvisorFullCard(
+                                            trip = trip,
+                                            onClick = {
+                                                viewModel.markTripAsViewed(trip)
+                                                onTripClick(trip.id)
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
+
+                "Preferiti" -> {
+                    if (viewingListId == null) {
+                        FavoriteListsScreen(
+                            tokenUtente = tokenUtente,
+                            onListClick = { listId -> viewingListId = listId }
+                        )
+                    } else {
+                        ListDetailScreen(
+                            listId = viewingListId!!,
+                            tokenUtente = tokenUtente,
+                            onNavigateBack = { viewingListId = null },
+                            onTripClick = onTripClick
+                        )
+                    }
+                }
+
+                "Viaggi" -> {
+                    MyReservationsSection(
+                        reservations = viewModel.myReservations,
+                        allTrips = viewModel.trips,
+                        isLoading = viewModel.isLoadingReservations,
+                        errorMessage = viewModel.reservationsError,
+                        onRefresh = { viewModel.fetchMyReservations(tokenUtente) },
+                        onTripClick = onTripClick,
+                        onExportIcsClick = { reservation -> icsPreviewReservation = reservation }
+                    )
+                }
             }
-            // --- MOSTRA LE LISTE SE È SELEZIONATA LA TAB "PREFERITI" ---
-            else if (selectedTab == "Preferiti") {
-                // --- NUOVA LOGICA DI NAVIGAZIONE INTERNA ---
-                if (viewingListId == null) {
-                    FavoriteListsScreen(
-                        tokenUtente = tokenUtente,
-                        onListClick = { listId -> viewingListId = listId } // Entra nella lista
+        }
+    }
+
+    // --- DIALOG ESPORTAZIONE CALENDARIO (.ICS) ---
+    if (icsPreviewReservation != null) {
+        val res = icsPreviewReservation!!
+        val matchedTrip = viewModel.trips.find { it.id == res.tripId }
+        val icsContent = buildIcsContent(res, matchedTrip)
+
+        AlertDialog(
+            onDismissRequest = { icsPreviewReservation = null },
+            title = {
+                Text("Esporta in Calendario (.ics)", fontWeight = FontWeight.ExtraBold, color = TripBlack)
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Formato standard iCalendar (.ics) generato per \"${res.tripTitle}\":",
+                        fontSize = 13.sp,
+                        color = Color.DarkGray
                     )
-                } else {
-                    ListDetailScreen(
-                        listId = viewingListId!!,
-                        tokenUtente = tokenUtente,
-                        onNavigateBack = { viewingListId = null }, // Torna alle liste
-                        onTripClick = onTripClick
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        color = TripWarmBg,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = icsContent,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = TripBlack,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        shareIcsCalendar(context, icsContent, res.tripTitle)
+                        icsPreviewReservation = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TripGreen)
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Condividi / Salva .ics")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { icsPreviewReservation = null }) {
+                    Text("Chiudi")
+                }
+            }
+        )
+    }
+
+    // --- BOTTOM SHEET: NOTIFICHE E PROMEMORIA PRENOTAZIONI ---
+    if (showNotificationsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showNotificationsSheet = false },
+            containerColor = Color.White
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+            ) {
+                Text("Notifiche e Promemoria", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (viewModel.myReservations.isNotEmpty()) {
+                    val latest = viewModel.myReservations.first()
+                    NotificationItem(
+                        title = "Promemoria Prenotazione Confermata",
+                        message = "Hai ${latest.bookedSpots} posto/i prenotati per \"${latest.tripTitle}\". Puoi esportare il promemoria in formato .ics dalla sezione Viaggi.",
+                        time = "Attivo"
                     )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color.LightGray.copy(alpha = 0.4f))
+                }
+
+                NotificationItem(
+                    title = "Nuove escursioni e viaggi disponibili!",
+                    message = "Scopri i nuovi tour giornalieri e pacchetti viaggio a Roma e Losanna.",
+                    time = "Oggi"
+                )
+                Spacer(modifier = Modifier.height(32.dp))
+            }
+        }
+    }
+
+    // --- BOTTOM SHEET: RICERCA AVANZATA TRIPADVISOR / AIRBNB ---
+    if (showSearchSheet) {
+        var tempQuery by remember { mutableStateOf(searchQuery) }
+        var tempType by remember { mutableStateOf(selectedOfferType) }
+        var sliderPrice by remember { mutableStateOf(maxPriceFilter?.toFloat() ?: 3000f) }
+        var tempParticipants by remember { mutableStateOf(minParticipants) }
+        var tempSort by remember { mutableStateOf(sortOption) }
+
+        ModalBottomSheet(
+            onDismissRequest = { showSearchSheet = false },
+            containerColor = Color.White
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = 24.dp, vertical = 12.dp)
+                    .fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Cerca e Filtra", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
+                    TextButton(onClick = {
+                        tempQuery = ""
+                        tempType = "TUTTI"
+                        sliderPrice = 3000f
+                        tempParticipants = 1
+                        tempSort = "RATING"
+                    }) {
+                        Text("Ripristina", color = Color.Gray, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = tempQuery,
+                    onValueChange = { tempQuery = it },
+                    label = { Text("Dove vuoi andare? (es. Roma, Losanna, Tour)") },
+                    leadingIcon = { Icon(Icons.Default.Place, contentDescription = null, tint = TripGreen) },
+                    trailingIcon = {
+                        if (tempQuery.isNotEmpty()) {
+                            IconButton(onClick = { tempQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Cancella")
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    singleLine = true
+                )
+
+                // Suggerimenti rapidi cliccabili
+                Spacer(modifier = Modifier.height(10.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val quickTags = listOf("Roma", "Losanna", "Parigi", "Tokyo", "Amalfi", "Tour")
+                    items(quickTags) { tag ->
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = if (tempQuery.equals(tag, ignoreCase = true)) TripGreen.copy(alpha = 0.15f) else TripWarmBg,
+                            modifier = Modifier.clickable { tempQuery = tag }
+                        ) {
+                            Text(
+                                text = tag,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (tempQuery.equals(tag, ignoreCase = true)) TripDarkGreen else TripBlack,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+                Text("Tipologia di esperienza", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TripBlack)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OfferTypeChip("Tutti", tempType == "TUTTI") { tempType = "TUTTI" }
+                    OfferTypeChip("✈️ Viaggi", tempType == "VIAGGI") { tempType = "VIAGGI" }
+                    OfferTypeChip("🎟️ Attività", tempType == "ATTIVITA") { tempType = "ATTIVITA" }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Budget massimo a persona", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TripBlack)
+                    Text(
+                        text = if (sliderPrice >= 3000f) "Qualsiasi prezzo" else "Fino a €${sliderPrice.roundToInt()}",
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 14.sp,
+                        color = TripGreen
+                    )
+                }
+                Slider(
+                    value = sliderPrice,
+                    onValueChange = { sliderPrice = it },
+                    valueRange = 50f..3000f,
+                    steps = 28,
+                    colors = SliderDefaults.colors(
+                        thumbColor = TripGreen,
+                        activeTrackColor = TripGreen
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Partecipanti", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TripBlack)
+                        Text("Mostra solo con posti disponibili", fontSize = 12.sp, color = Color.Gray)
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(TripWarmBg)
+                            .padding(horizontal = 4.dp)
+                    ) {
+                        IconButton(onClick = { if (tempParticipants > 1) tempParticipants-- }) {
+                            Text("-", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
+                        }
+                        Text(
+                            text = "$tempParticipants",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 16.sp,
+                            color = TripBlack,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+                        IconButton(onClick = { tempParticipants++ }) {
+                            Text("+", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TripGreen)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+                Text("Ordina risultati per", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TripBlack)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OfferTypeChip("⭐ Più votati", tempSort == "RATING") { tempSort = "RATING" }
+                    OfferTypeChip("€ Crescente", tempSort == "PRICE_ASC") { tempSort = "PRICE_ASC" }
+                    OfferTypeChip("€ Decrescente", tempSort == "PRICE_DESC") { tempSort = "PRICE_DESC" }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(
+                    onClick = {
+                        searchQuery = tempQuery
+                        selectedOfferType = tempType
+                        maxPriceFilter = if (sliderPrice >= 3000f) null else sliderPrice.toDouble()
+                        minParticipants = tempParticipants
+                        sortOption = tempSort
+                        showSearchSheet = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TripGreen),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text("Mostra risultati", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
+// =========================================================================
+// SEZIONE "VIAGGI": LISTA PRENOTAZIONI EFFETTUATE DAL VIAGGIATORE
+// =========================================================================
+@Composable
+fun MyReservationsSection(
+    reservations: List<ReservationDTO>,
+    allTrips: List<TripDTO>,
+    isLoading: Boolean,
+    errorMessage: String?,
+    onRefresh: () -> Unit,
+    onTripClick: (Long) -> Unit,
+    onExportIcsClick: (ReservationDTO) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(TripWarmBg),
+        contentPadding = PaddingValues(bottom = 32.dp)
+    ) {
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "I Miei Viaggi e Attività",
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TripBlack
+                    )
+                    Text(
+                        text = "Riepilogo prenotazioni ed esportazione calendario (.ics)",
+                        fontSize = 13.sp,
+                        color = Color.Gray
+                    )
+                }
+                IconButton(
+                    onClick = onRefresh,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Color.White)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Aggiorna", tint = TripGreen)
+                }
+            }
+        }
+
+        if (isLoading) {
+            item {
+                Box(modifier = Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = TripGreen)
+                }
+            }
+        } else if (errorMessage != null) {
+            item {
+                Text(
+                    text = errorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+            }
+        } else if (reservations.isEmpty()) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    shadowElevation = 2.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.DateRange,
+                            contentDescription = null,
+                            tint = TripGreen,
+                            modifier = Modifier.size(56.dp)
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text(
+                            text = "Nessuna prenotazione attiva",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TripBlack
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Esplora la Home per prenotare il tuo prossimo viaggio o un'escursione giornaliera.",
+                            fontSize = 13.sp,
+                            color = Color.Gray
+                        )
+                    }
+                }
+            }
+        } else {
+            items(reservations) { reservation ->
+                val matchedTrip = allTrips.find { it.id == reservation.tripId }
+                val isActivity = matchedTrip?.let { isActivityOrExcursion(it) } ?: false
+
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    shadowElevation = 3.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 8.dp)
+                        .clickable { onTripClick(reservation.tripId) }
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(84.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(Color.LightGray)
+                            ) {
+                                AsyncImage(
+                                    model = resolveTripImageUrl(matchedTrip),
+                                    contentDescription = reservation.tripTitle,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(14.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        color = if (isActivity) TripOrangeActivity.copy(alpha = 0.12f) else TripGreen.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = if (isActivity) "ATTIVITÀ" else "VIAGGIO",
+                                            color = if (isActivity) TripOrangeActivity else TripGreen,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+
+                                    Surface(
+                                        color = Color(0xFF10B981).copy(alpha = 0.15f),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = reservation.status,
+                                            color = TripDarkGreen,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = reservation.tripTitle,
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = TripBlack,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = if (matchedTrip != null) "Date: ${matchedTrip.startDate} → ${matchedTrip.endDate}"
+                                    else "Prenotato il: ${reservation.reservationDate.take(10)}",
+                                    fontSize = 12.sp,
+                                    color = Color.Gray
+                                )
+
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "${reservation.bookedSpots} partecipanti",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color.DarkGray
+                                    )
+                                    Text(
+                                        text = "Totale: €${reservation.totalPaid}",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = TripDarkGreen
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = { onExportIcsClick(reservation) }) {
+                                Icon(Icons.Default.DateRange, contentDescription = null, tint = TripGreen, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Esporta Calendario (.ics)", color = TripGreen, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+
+                            TextButton(onClick = { onTripClick(reservation.tripId) }) {
+                                Text("Vedi dettagli →", color = TripBlack, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-@Preview(showBackground = true)
 @Composable
-fun HomeScreenPreview() {
-    TravelAppTheme {
-        HomeScreen(tokenUtente = "")
+fun OfferTypeChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (selected) TripGreen else Color.White,
+        shadowElevation = if (selected) 4.dp else 1.dp,
+        modifier = Modifier.clickable { onClick() }
+    ) {
+        Text(
+            text = label,
+            color = if (selected) Color.White else TripBlack,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+        )
+    }
+}
+
+@Composable
+fun SectionHeader(title: String, subtitle: String) {
+    Column(modifier = Modifier.padding(horizontal = 24.dp)) {
+        Text(
+            text = title,
+            fontSize = 21.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = TripBlack
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = subtitle,
+            fontSize = 13.sp,
+            color = Color.Gray
+        )
+    }
+}
+
+@Composable
+fun RecentlyViewedTripCard(
+    trip: TripDTO,
+    onClick: () -> Unit
+) {
+    val isActivity = isActivityOrExcursion(trip)
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White,
+        shadowElevation = 3.dp,
+        modifier = Modifier
+            .width(180.dp)
+            .clickable { onClick() }
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(115.dp)
+                    .background(Color.LightGray)
+            ) {
+                AsyncImage(
+                    model = resolveTripImageUrl(trip),
+                    contentDescription = trip.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (isActivity) TripOrangeActivity else TripGreen,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        text = if (isActivity) "ATTIVITÀ" else "VIAGGIO",
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    text = trip.title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = TripBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Star, contentDescription = null, tint = TripGreen, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "${trip.averageRating} (${trip.reviewCount})",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.DarkGray
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "da €${trip.price}",
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 14.sp,
+                    color = TripDarkGreen
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun FamousDestinationCard(
+    destination: FamousDestination,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        shadowElevation = 5.dp,
+        modifier = Modifier
+            .width(190.dp)
+            .height(235.dp)
+            .clickable { onClick() }
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            AsyncImage(
+                model = destination.imageUrl,
+                contentDescription = destination.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)),
+                            startY = 220f
+                        )
+                    )
+            )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(16.dp)
+            ) {
+                Surface(
+                    color = TripGreen,
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = destination.country.uppercase(),
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = destination.name,
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    text = destination.tagline,
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TripAdvisorFullCard(
+    trip: TripDTO,
+    onClick: () -> Unit
+) {
+    val isActivity = isActivityOrExcursion(trip)
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White,
+        shadowElevation = 3.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 8.dp)
+            .clickable { onClick() }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(112.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.LightGray)
+            ) {
+                AsyncImage(
+                    model = resolveTripImageUrl(trip),
+                    contentDescription = trip.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Surface(
+                    color = if (isActivity) TripOrangeActivity else TripGreen,
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                ) {
+                    Text(
+                        text = if (isActivity) "ATTIVITÀ" else "VIAGGIO",
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = TripGreen, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = trip.location ?: "Destinazione",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TripGreen
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = trip.title,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 16.sp,
+                    color = TripBlack,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Star, contentDescription = null, tint = TripAmber, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "${trip.averageRating}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = TripBlack
+                    )
+                    Text(
+                        text = " (${trip.reviewCount} recensioni)",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "da €${trip.price} / persona",
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 15.sp,
+                    color = TripDarkGreen
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CityDetailScreen(
+    destination: FamousDestination,
+    allTrips: List<TripDTO>,
+    onBackClick: () -> Unit,
+    onTripClick: (TripDTO) -> Unit
+) {
+    var cityFilter by remember { mutableStateOf("TUTTI") }
+
+    val cityTrips = remember(destination, allTrips, cityFilter) {
+        val base = allTrips.filter {
+            (it.location?.contains(destination.name, ignoreCase = true) == true) ||
+                    it.title.contains(destination.name, ignoreCase = true)
+        }
+        when (cityFilter) {
+            "VIAGGI" -> base.filter { !isActivityOrExcursion(it) }
+            "ATTIVITA" -> base.filter { isActivityOrExcursion(it) }
+            else -> base
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(TripWarmBg),
+        contentPadding = PaddingValues(bottom = 32.dp)
+    ) {
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(270.dp)
+            ) {
+                AsyncImage(
+                    model = destination.imageUrl,
+                    contentDescription = destination.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Black.copy(alpha = 0.3f), Color.Black.copy(alpha = 0.75f))
+                            )
+                        )
+                )
+
+                IconButton(
+                    onClick = onBackClick,
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .align(Alignment.TopStart)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                ) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Indietro", tint = TripBlack)
+                }
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(24.dp)
+                ) {
+                    Surface(color = TripGreen, shape = RoundedCornerShape(6.dp)) {
+                        Text(
+                            text = "GUIDA DESTINAZIONE • ${destination.country.uppercase()}",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = destination.name,
+                        color = Color.White,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                    Text(
+                        text = destination.tagline,
+                        color = Color.White.copy(alpha = 0.9f),
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
+
+        item {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = Color.White,
+                shadowElevation = 2.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = TripGreen)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Scopri ${destination.name}",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TripBlack
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = destination.description,
+                        fontSize = 14.sp,
+                        color = Color.DarkGray,
+                        lineHeight = 21.sp
+                    )
+                }
+            }
+        }
+
+        item {
+            SectionHeader(
+                title = "Viaggi e Attività a ${destination.name}",
+                subtitle = "Filtra tra pacchetti viaggio ed escursioni giornaliere"
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OfferTypeChip("Tutti", cityFilter == "TUTTI") { cityFilter = "TUTTI" }
+                OfferTypeChip("✈️ Viaggi", cityFilter == "VIAGGI") { cityFilter = "VIAGGI" }
+                OfferTypeChip("🎟️ Attività", cityFilter == "ATTIVITA") { cityFilter = "ATTIVITA" }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        if (cityTrips.isNotEmpty()) {
+            items(cityTrips) { trip ->
+                TripAdvisorFullCard(trip = trip, onClick = { onTripClick(trip) })
+            }
+        } else {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 8.dp)
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Text(
+                            text = "Nessuna offerta specifica trovata per questo filtro a ${destination.name}.",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = TripBlack
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Ti mostriamo altre esperienze consigliate sul catalogo:",
+                            fontSize = 13.sp,
+                            color = Color.Gray
+                        )
+                    }
+                }
+            }
+            items(allTrips) { trip ->
+                TripAdvisorFullCard(trip = trip, onClick = { onTripClick(trip) })
+            }
+        }
+    }
+}
+
+@Composable
+fun NotificationItem(title: String, message: String, time: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(TripGreen.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Notifications, contentDescription = null, tint = TripGreen, modifier = Modifier.size(20.dp))
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TripBlack)
+                Text(time, fontSize = 12.sp, color = Color.Gray)
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(message, fontSize = 13.sp, color = Color.DarkGray)
+        }
     }
 }

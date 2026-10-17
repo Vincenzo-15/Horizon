@@ -65,4 +65,15 @@ public class TripController {
         tripService.deleteTrip(id, principal.getName());
         return ResponseEntity.noContent().build();
     }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<TripDTO> updateTrip(
+            @PathVariable Long id,
+            @RequestBody Trip trip,
+            Principal principal) {
+
+        // principal.getName() garantisce che prendiamo l'email dal token dell'utente attualmente loggato
+        TripDTO updatedTrip = tripService.updateTrip(id, trip, principal.getName());
+        return ResponseEntity.ok(updatedTrip);
+    }
 }

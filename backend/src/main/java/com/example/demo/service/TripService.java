@@ -73,6 +73,62 @@ public class TripService {
         tripRepository.delete(trip);
     }
 
+    /**
+     * Modifica un viaggio esistente.
+     * Verifica che chi lo modifica sia effettivamente il proprietario.
+     */
+    @Transactional
+    public TripDTO updateTrip(Long id, Trip updatedTripData, String organizerEmail) {
+
+        // 1. Cerco il viaggio nel database
+        Trip existingTrip = tripRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Viaggio non trovato con ID: " + id));
+
+        // 2. Controllo Sicurezza: Il viaggio appartiene a questo organizzatore?
+        if (!existingTrip.getOrganizer().getEmail().equals(organizerEmail)) {
+            throw new RuntimeException("Errore di Sicurezza: Non sei autorizzato a modificare questo pacchetto!");
+        }
+
+        // 3. Aggiorno solo i campi modificabili
+        // Non aggiorniamo l'id, l'organizzatore, o le liste preferiti/prenotazioni
+        if (updatedTripData.getTitle() != null) {
+            existingTrip.setTitle(updatedTripData.getTitle());
+        }
+        if (updatedTripData.getDescription() != null) {
+            existingTrip.setDescription(updatedTripData.getDescription());
+        }
+        if (updatedTripData.getPrice() != null) {
+            existingTrip.setPrice(updatedTripData.getPrice());
+        }
+        if (updatedTripData.getAvailableSpots() != null) {
+            // Un controllo carino: non far scendere i posti sotto zero
+            if(updatedTripData.getAvailableSpots() >= 0){
+                existingTrip.setAvailableSpots(updatedTripData.getAvailableSpots());
+            }
+        }
+        if (updatedTripData.getLocation() != null) {
+            existingTrip.setLocation(updatedTripData.getLocation());
+        }
+        if (updatedTripData.getStartDate() != null) {
+            existingTrip.setStartDate(updatedTripData.getStartDate());
+        }
+        if (updatedTripData.getEndDate() != null) {
+            existingTrip.setEndDate(updatedTripData.getEndDate());
+        }
+
+        // Gestione delle immagini (sostituisce quelle vecchie con le nuove se presenti)
+        if (updatedTripData.getImageUrls() != null && !updatedTripData.getImageUrls().isEmpty()) {
+            existingTrip.setImageUrls(updatedTripData.getImageUrls());
+        }
+
+        // 4. Salvo le modifiche. Grazie a @Transactional, il save non è strettamente obbligatorio,
+        // ma è buona prassi esplicitarlo.
+        Trip savedTrip = tripRepository.save(existingTrip);
+
+        // 5. Restituisco il DTO aggiornato
+        return convertToDTO(savedTrip);
+    }
+
     private TripDTO convertToDTO(Trip trip) {
         TripDTO dto = modelMapper.map(trip, TripDTO.class);
         if (trip.getOrganizer() != null) {

@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.travelapp.network.RetrofitClient
 import com.example.travelapp.network.TripDTO
+import com.example.travelapp.network.TripRequest
 import kotlinx.coroutines.launch
 
 class TripDetailViewModel : ViewModel() {
@@ -17,6 +18,10 @@ class TripDetailViewModel : ViewModel() {
 
     // Stati per l'eliminazione (Agenzia)
     var isDeleted by mutableStateOf(false)
+
+    // Stati per la modifica (Agenzia)
+    var isUpdating by mutableStateOf(false)
+    var updateMessage by mutableStateOf<String?>(null)
 
     // Stati per la prenotazione (Viaggiatore)
     var isBooking by mutableStateOf(false)
@@ -65,7 +70,32 @@ class TripDetailViewModel : ViewModel() {
         }
     }
 
-    // --- NUOVA FUNZIONE DI PRENOTAZIONE ---
+    // --- NUOVA FUNZIONE: Aggiorna Viaggio ---
+    fun updateTrip(token: String, tripId: Long, request: TripRequest) {
+        viewModelScope.launch {
+            isUpdating = true
+            updateMessage = null
+            try {
+                val response = RetrofitClient.apiService.updateTrip("Bearer $token", tripId, request)
+                if (response.isSuccessful && response.body() != null) {
+                    // Aggiorniamo i dati locali con quelli appena restituiti dal server
+                    trip = response.body()
+                    updateMessage = "Viaggio aggiornato con successo!"
+                } else {
+                    updateMessage = "Errore durante l'aggiornamento (${response.code()})"
+                }
+            } catch (e: Exception) {
+                updateMessage = "Errore di rete durante il salvataggio."
+            } finally {
+                isUpdating = false
+            }
+        }
+    }
+
+    fun clearUpdateMessage() {
+        updateMessage = null
+    }
+
     fun bookTrip(token: String, tripId: Long, spots: Int) {
         viewModelScope.launch {
             isBooking = true
@@ -75,11 +105,8 @@ class TripDetailViewModel : ViewModel() {
                 if (response.isSuccessful) {
                     bookingSuccess = true
                     bookingMessage = "Prenotazione confermata con successo! Ti abbiamo inviato un'email con il riepilogo."
-
-                    // Ricarichiamo i dettagli per far scendere il numero di posti rimasti a schermo
                     fetchTripDetail(token, tripId)
                 } else {
-                    // Leggiamo l'errore inviato dal Backend (es. "Posti insufficienti")
                     val errorStr = response.errorBody()?.string() ?: "Errore durante la prenotazione."
                     bookingMessage = errorStr
                 }
@@ -91,7 +118,6 @@ class TripDetailViewModel : ViewModel() {
         }
     }
 
-    // Scarica le liste quando si apre il popup
     fun fetchMyListsForDialog(token: String) {
         viewModelScope.launch {
             try {
@@ -105,14 +131,13 @@ class TripDetailViewModel : ViewModel() {
         }
     }
 
-    // Aggiungi un viaggio a una lista esistente
     fun addTripToList(token: String, listId: Long, tripId: Long) {
         viewModelScope.launch {
             try {
                 val response = RetrofitClient.apiService.addTripToList("Bearer $token", listId, tripId)
                 if (response.isSuccessful) {
                     favoriteMessage = "Aggiunto ai preferiti!"
-                    showFavoriteDialog = false // Chiude il popup
+                    showFavoriteDialog = false
                 } else {
                     favoriteMessage = "Errore: impossibile aggiungere il viaggio."
                 }
@@ -122,16 +147,12 @@ class TripDetailViewModel : ViewModel() {
         }
     }
 
-    // Crea una lista e aggiungi subito il viaggio
     fun createListAndAddTrip(token: String, name: String, visibility: String, tripId: Long) {
         viewModelScope.launch {
             try {
-                // 1. Crea la lista
                 val createResponse = RetrofitClient.apiService.createList("Bearer $token", name, visibility)
                 if (createResponse.isSuccessful && createResponse.body() != null) {
                     val newListId = createResponse.body()!!.id
-
-                    // 2. Aggiungi il viaggio alla nuova lista
                     addTripToList(token, newListId, tripId)
                 } else {
                     favoriteMessage = "Impossibile creare la lista."

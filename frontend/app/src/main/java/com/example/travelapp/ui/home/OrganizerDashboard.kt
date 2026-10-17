@@ -1,6 +1,11 @@
 package com.example.travelapp.ui.home
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -8,22 +13,59 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.travelapp.network.ReservationDTO
 import com.example.travelapp.network.TripDTO
 import com.example.travelapp.viewmodel.OrganizerViewModel
+
+// --- ANIMAZIONI ---
+fun Modifier.bounceClick(scaleDown: Float = 0.92f, onClick: () -> Unit) = composed {
+    var isPressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(targetValue = if (isPressed) scaleDown else 1f, label = "BounceAnimation")
+    this.graphicsLayer { scaleX = scale; scaleY = scale }
+        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+        .pointerInput(isPressed) {
+            awaitPointerEventScope {
+                isPressed = if (isPressed) { waitForUpOrCancellation(); false } else { awaitFirstDown(false); true }
+            }
+        }
+}
+
+fun Modifier.shimmerEffect(): Modifier = composed {
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val startOffsetX by transition.animateFloat(
+        initialValue = -2 * size.width.toFloat(), targetValue = 2 * size.width.toFloat(),
+        animationSpec = infiniteRepeatable(animation = tween(1000, easing = LinearEasing), repeatMode = RepeatMode.Restart),
+        label = "shimmer_animation"
+    )
+    background(
+        brush = Brush.linearGradient(
+            colors = listOf(Color(0xFFE0E0E0), Color(0xFFF5F5F5), Color(0xFFE0E0E0)),
+            start = Offset(startOffsetX, 0f), end = Offset(startOffsetX + size.width.toFloat(), size.height.toFloat())
+        )
+    ).onGloballyPositioned { size = it.size }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,6 +76,9 @@ fun OrganizerDashboard(
     onTripClick: (Long) -> Unit = {},
     onNavigateToProfile: () -> Unit = {}
 ) {
+    // Stati Navigazione BottomBar
+    var selectedTab by remember { mutableStateOf("Console") }
+
     LaunchedEffect(tokenUtente) {
         if (tokenUtente.isNotEmpty()) {
             viewModel.fetchMyTrips(tokenUtente)
@@ -41,290 +86,343 @@ fun OrganizerDashboard(
     }
 
     Scaffold(
+        containerColor = TripWarmBg, // Sfondo grigio caldo come la Home
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { onNavigateToCreateTrip() },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = RoundedCornerShape(20.dp),
-                elevation = FloatingActionButtonDefaults.elevation(8.dp),
-                icon = { Icon(Icons.Default.Add, contentDescription = "Nuovo Viaggio") },
-                text = { Text("Nuovo Pacchetto", fontWeight = FontWeight.Bold) }
-            )
+            if (selectedTab == "Console") {
+                ExtendedFloatingActionButton(
+                    onClick = { onNavigateToCreateTrip() },
+                    containerColor = TripBlack, // Bottone scuro ed elegante
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(20.dp),
+                    elevation = FloatingActionButtonDefaults.elevation(8.dp),
+                    icon = { Icon(Icons.Default.Add, contentDescription = "Nuovo") },
+                    text = { Text("Nuova Offerta", fontWeight = FontWeight.Bold) }
+                )
+            }
         },
         bottomBar = {
             NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
+                containerColor = Color.White,
+                tonalElevation = 12.dp
             ) {
-                NavigationBarItem(icon = { Icon(Icons.Default.Home, "Dashboard") }, label = { Text("Console") }, selected = true, onClick = {})
-                NavigationBarItem(icon = { Icon(Icons.Default.DateRange, "Catalogo") }, label = { Text("Catalogo") }, selected = false, onClick = {})
-                NavigationBarItem(icon = { Icon(Icons.Default.Notifications, "Prenotazioni") }, label = { Text("Ordini") }, selected = false, onClick = {})
-                NavigationBarItem(icon = { Icon(Icons.Default.Person, "Profilo") }, label = { Text("Profilo") }, selected = false, onClick = { onNavigateToProfile() })
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Home, "Console") },
+                    label = { Text("Console", fontWeight = FontWeight.SemiBold) },
+                    selected = selectedTab == "Console",
+                    colors = NavigationBarItemDefaults.colors(selectedIconColor = TripGreen, selectedTextColor = TripGreen, indicatorColor = TripGreen.copy(alpha = 0.15f)),
+                    onClick = { selectedTab = "Console" }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Outlined.ShoppingCart, "Ordini") },
+                    label = { Text("Ordini", fontWeight = FontWeight.SemiBold) },
+                    selected = selectedTab == "Ordini",
+                    colors = NavigationBarItemDefaults.colors(selectedIconColor = TripGreen, selectedTextColor = TripGreen, indicatorColor = TripGreen.copy(alpha = 0.15f)),
+                    onClick = { selectedTab = "Ordini" }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Person, "Profilo") },
+                    label = { Text("Profilo", fontWeight = FontWeight.SemiBold) },
+                    selected = selectedTab == "Profilo",
+                    colors = NavigationBarItemDefaults.colors(selectedIconColor = TripGreen, selectedTextColor = TripGreen, indicatorColor = TripGreen.copy(alpha = 0.15f)),
+                    onClick = { onNavigateToProfile() }
+                )
             }
         }
     ) { paddingValues ->
 
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(paddingValues),
-            contentPadding = PaddingValues(bottom = 96.dp)
-        ) {
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 24.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(54.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = listOf(
-                                            MaterialTheme.colorScheme.primary,
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-                                        )
-                                    )
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Star, contentDescription = "Partner", tint = Color.White, modifier = Modifier.size(28.dp))
-                        }
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Surface(
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(6.dp)
+        Box(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
+            when (selectedTab) {
+                "Console" -> {
+                    // --- TAB 1: CONSOLE E CATALOGO ---
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 96.dp) // Spazio per il FAB
+                    ) {
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 24.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(
-                                    text = "PARTNER VERIFICATO",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("Console Agenzia", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-                        }
-                    }
-
-                    IconButton(
-                        onClick = { viewModel.fetchMyTrips(tokenUtente) },
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface)
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Aggiorna", tint = MaterialTheme.colorScheme.primary)
-                    }
-                }
-            }
-
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Card(
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(24.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = listOf(
-                                            MaterialTheme.colorScheme.primary,
-                                            Color(0xFF0044AA)
-                                        )
-                                    )
-                                )
-                                .padding(20.dp)
-                        ) {
-                            Column {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.White.copy(alpha = 0.2f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.Place, contentDescription = null, tint = Color.White)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(54.dp)
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .background(TripBlack),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.Star, contentDescription = "Partner", tint = TripAmber, modifier = Modifier.size(28.dp))
+                                    }
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Column {
+                                        Surface(
+                                            color = TripGreen.copy(alpha = 0.15f),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "PARTNER VERIFICATO",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = TripDarkGreen,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text("Console Agenzia", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
+                                    }
                                 }
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text(
-                                    text = "${viewModel.myTrips.size}",
-                                    fontSize = 32.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = "Pacchetti Attivi",
-                                    fontSize = 13.sp,
-                                    color = Color.White.copy(alpha = 0.85f),
-                                    fontWeight = FontWeight.Medium
-                                )
+
+                                IconButton(
+                                    onClick = { viewModel.fetchMyTrips(tokenUtente) },
+                                    modifier = Modifier.clip(CircleShape).background(Color.White)
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Aggiorna", tint = TripGreen)
+                                }
                             }
                         }
-                    }
 
-                    // --- CARD ORDINI RICEVUTI COLLEGATA AL VIEWMODEL ---
-                    Card(
-                        modifier = Modifier.weight(1f),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                        shape = RoundedCornerShape(24.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
-                            Box(
+                        // --- CARD STATISTICHE ---
+                        item {
+                            Row(
                                 modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF10B981).copy(alpha = 0.1f)),
-                                contentAlignment = Alignment.Center
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = Color(0xFF10B981))
+                                Card(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(20.dp),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(TripGreen)
+                                            .padding(20.dp)
+                                    ) {
+                                        Column {
+                                            Box(
+                                                modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(Icons.Default.Place, contentDescription = null, tint = Color.White)
+                                            }
+                                            Spacer(modifier = Modifier.height(16.dp))
+                                            Text(text = "${viewModel.myTrips.size}", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                                            Text(text = "Annunci Attivi", fontSize = 13.sp, color = Color.White.copy(alpha = 0.85f), fontWeight = FontWeight.Medium)
+                                        }
+                                    }
+                                }
+
+                                Card(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { selectedTab = "Ordini" }, // Cliccabile per andare agli ordini
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                    shape = RoundedCornerShape(20.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(20.dp)) {
+                                        Box(
+                                            modifier = Modifier.size(40.dp).clip(CircleShape).background(TripOrangeActivity.copy(alpha = 0.1f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = TripOrangeActivity)
+                                        }
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text(text = "${viewModel.totalOrders}", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
+                                        Text(text = "Ordini Ricevuti", fontSize = 13.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                                    }
+                                }
                             }
+                            Spacer(modifier = Modifier.height(32.dp))
+                        }
+
+                        item {
+                            SectionHeader(title = "Il tuo Catalogo", subtitle = "Gestisci i viaggi e le attività che hai pubblicato")
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                // Qui il ViewModel inietta il numero reale degli ordini ricevuti!
-                                text = "${viewModel.totalOrders}",
-                                fontSize = 32.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Ordini Ricevuti",
-                                fontSize = 13.sp,
-                                color = Color.Gray,
-                                fontWeight = FontWeight.Medium
-                            )
+                        }
+
+                        if (viewModel.isLoading) {
+                            items(2) {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 10.dp),
+                                    shape = RoundedCornerShape(20.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Box(modifier = Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(16.dp)).shimmerEffect())
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Box(modifier = Modifier.fillMaxWidth(0.7f).height(22.dp).clip(RoundedCornerShape(6.dp)).shimmerEffect())
+                                    }
+                                }
+                            }
+                        } else if (viewModel.errorMessage != null) {
+                            item { Text(text = viewModel.errorMessage!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(24.dp)) }
+                        } else if (viewModel.myTrips.isEmpty()) {
+                            item {
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = Color.White,
+                                    modifier = Modifier.fillMaxWidth().padding(24.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(32.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(
+                                            modifier = Modifier.size(64.dp).clip(CircleShape).background(TripGreen.copy(alpha = 0.1f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(32.dp), tint = TripGreen)
+                                        }
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text("Nessun pacchetto pubblicato", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TripBlack)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text("Crea la tua prima offerta per raggiungere i viaggiatori.", fontSize = 13.sp, color = Color.Gray, textAlign = TextAlign.Center)
+                                    }
+                                }
+                            }
+                        } else {
+                            items(viewModel.myTrips) { trip ->
+                                OrganizerTripCard(trip = trip, onClick = { onTripClick(trip.id) })
+                            }
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(32.dp))
-            }
 
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                "Ordini" -> {
+                    // --- TAB 2: ORDINI E PRENOTAZIONI RICEVUTE ---
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 32.dp)
+                    ) {
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "Prenotazioni Ricevute",
+                                        fontSize = 26.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = TripBlack
+                                    )
+                                    Text(
+                                        text = "Elenco degli ordini dei viaggiatori",
+                                        fontSize = 13.sp,
+                                        color = Color.Gray
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { viewModel.fetchMyTrips(tokenUtente) },
+                                    modifier = Modifier.clip(CircleShape).background(Color.White)
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Aggiorna", tint = TripGreen)
+                                }
+                            }
+                        }
+
+                        if (viewModel.isLoading) {
+                            item { Box(modifier = Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = TripGreen) } }
+                        } else if (viewModel.agencyOrders.isEmpty()) {
+                            item {
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = Color.White,
+                                    modifier = Modifier.fillMaxWidth().padding(24.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(32.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Icon(Icons.Outlined.ShoppingCart, contentDescription = null, tint = TripGreen, modifier = Modifier.size(56.dp))
+                                        Spacer(modifier = Modifier.height(14.dp))
+                                        Text("Nessun ordine ricevuto", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text("Le prenotazioni dei viaggiatori appariranno qui.", fontSize = 13.sp, color = Color.Gray, textAlign = TextAlign.Center)
+                                    }
+                                }
+                            }
+                        } else {
+                            items(viewModel.agencyOrders) { order ->
+                                AgencyOrderCard(order = order, onTripClick = onTripClick)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Card per le prenotazioni ricevute dall'agenzia
+@Composable
+fun AgencyOrderCard(order: ReservationDTO, onTripClick: (Long) -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White,
+        shadowElevation = 2.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 8.dp)
+            .clickable { onTripClick(order.tripId) }
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    color = TripGreen.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
-                        text = "Il tuo Catalogo Viaggi",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                    Text(
-                        text = "${viewModel.myTrips.size} annunci",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
+                        text = "ORDINE #${order.id}",
+                        color = TripDarkGreen,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
-                Spacer(modifier = Modifier.height(16.dp))
+                Text(text = order.reservationDate.take(10), fontSize = 12.sp, color = Color.Gray)
             }
 
-            if (viewModel.isLoading) {
-                items(2) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 10.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Box(modifier = Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(18.dp)).shimmerEffect())
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Box(modifier = Modifier.fillMaxWidth(0.7f).height(22.dp).clip(RoundedCornerShape(6.dp)).shimmerEffect())
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Box(modifier = Modifier.fillMaxWidth(0.4f).height(16.dp).clip(RoundedCornerShape(6.dp)).shimmerEffect())
-                        }
-                    }
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = order.tripTitle,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = TripBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Person, contentDescription = null, tint = TripGreen, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = "${order.bookedSpots} posti prenotati", fontSize = 13.sp, color = Color.DarkGray)
                 }
-            } else if (viewModel.errorMessage != null) {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Text(
-                            text = viewModel.errorMessage!!,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                    }
-                }
-            } else if (viewModel.myTrips.isEmpty()) {
-                item {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 8.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(36.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(72.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Default.Add,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(36.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Nessun pacchetto pubblicato",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Crea la tua prima offerta turistica con galleria fotografica per raggiungere subito migliaia di viaggiatori.",
-                                fontSize = 14.sp,
-                                color = Color.Gray,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                }
-            } else {
-                items(viewModel.myTrips) { trip ->
-                    OrganizerTripCard(
-                        trip = trip,
-                        onClick = { onTripClick(trip.id) }
-                    )
-                }
+                Text(
+                    text = "Totale: €${order.totalPaid}",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TripBlack
+                )
             }
         }
     }
@@ -335,105 +433,66 @@ fun OrganizerTripCard(
     trip: TripDTO,
     onClick: () -> Unit = {}
 ) {
-    val coverImage = trip.imageUrls?.firstOrNull()
-    val photosCount = trip.imageUrls?.size ?: 0
+    val isActivity = isActivityOrExcursion(trip)
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 10.dp)
             .bounceClick { onClick() },
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(190.dp)
+                    .height(180.dp)
                     .background(Color.LightGray)
             ) {
-                if (!coverImage.isNullOrEmpty()) {
-                    AsyncImage(
-                        model = coverImage,
-                        contentDescription = trip.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
-                    }
-                }
+                AsyncImage(
+                    model = resolveTripImageUrl(trip), // Usa l'helper di HomeScreen
+                    contentDescription = trip.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
 
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f)),
-                                startY = 200f
-                            )
-                        )
+                        .background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f)), startY = 200f))
                 )
 
+                // Badge Viaggio/Attività
                 Surface(
-                    color = Color(0xFF10B981),
-                    shape = RoundedCornerShape(50),
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(14.dp)
+                    color = if (isActivity) TripOrangeActivity else TripGreen,
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.align(Alignment.TopStart).padding(12.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("PUBBLICATO", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
-                    }
-                }
-
-                if (photosCount > 0) {
-                    Surface(
-                        color = Color.Black.copy(alpha = 0.65f),
-                        shape = RoundedCornerShape(50),
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(14.dp)
-                    ) {
-                        Text(
-                            text = "$photosCount foto",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
+                        Text(if (isActivity) "ATTIVITÀ" else "VIAGGIO", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
                     }
                 }
 
                 Text(
-                    text = "${trip.price}€ / pers.",
+                    text = "€${trip.price} / pers.",
                     color = Color.White,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(16.dp)
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
                 )
             }
 
-            Column(modifier = Modifier.padding(20.dp)) {
+            Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = trip.title,
-                    fontSize = 20.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.ExtraBold,
+                    color = TripBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -441,30 +500,19 @@ fun OrganizerTripCard(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = TripGreen, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = trip.location ?: "Destinazione non specificata",
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         color = Color.Gray,
                         fontWeight = FontWeight.Medium
                     )
                 }
 
-                if (!trip.description.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = trip.description,
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
                 Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -473,7 +521,7 @@ fun OrganizerTripCard(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.DateRange, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "${trip.startDate ?: "N/D"} → ${trip.endDate ?: "N/D"}",
                             fontSize = 12.sp,
@@ -483,15 +531,15 @@ fun OrganizerTripCard(
                     }
 
                     Surface(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(8.dp)
+                        color = TripWarmBg,
+                        shape = RoundedCornerShape(6.dp)
                     ) {
                         Text(
-                            text = "${trip.availableSpots ?: 0} posti",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.primary,
+                            text = "${trip.availableSpots ?: 0} liberi",
+                            fontSize = 11.sp,
+                            color = TripBlack,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
                 }
