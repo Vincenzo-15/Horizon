@@ -17,24 +17,19 @@ public class ItineraryListController {
 
     private final ItineraryListService itineraryListService;
 
-    // Crea lista (usa Principal invece dell'ID nell'URL per sicurezza)
     @PostMapping("/create")
     public ResponseEntity<ItineraryListDTO> createList(
             @RequestParam String name,
             @RequestParam String visibility,
             Principal principal) {
-
-        // Dovrai aggiornare il tuo service per prendere l'email (principal.getName()) invece dell'ID!
         return new ResponseEntity<>(itineraryListService.createList(name, visibility, principal.getName()), HttpStatus.CREATED);
     }
 
-    // Aggiungi viaggio alla lista
     @PostMapping("/{listId}/add-trip/{tripId}")
     public ResponseEntity<ItineraryListDTO> addTripToList(@PathVariable Long listId, @PathVariable Long tripId) {
         return ResponseEntity.ok(itineraryListService.addTripToList(listId, tripId));
     }
 
-    // NUOVO: Condividi la lista con un amico (tramite email)
     @PostMapping("/{listId}/share")
     public ResponseEntity<?> shareList(
             @PathVariable Long listId,
@@ -48,22 +43,42 @@ public class ItineraryListController {
         }
     }
 
-    // Leggi le liste dell'utente
+    @PutMapping("/{listId}")
+    public ResponseEntity<?> updateList(
+            @PathVariable Long listId,
+            @RequestParam String name,
+            @RequestParam String visibility,
+            Principal principal) {
+        try {
+            ItineraryListDTO updatedList = itineraryListService.updateList(listId, name, visibility, principal.getName());
+            return ResponseEntity.ok(updatedList);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @GetMapping("/my-lists")
     public ResponseEntity<List<ItineraryListDTO>> getMyLists(Principal principal) {
-        // Dovrai aggiornare il tuo service per prendere l'email!
         return ResponseEntity.ok(itineraryListService.getListsByTraveler(principal.getName()));
     }
 
-    // Recupera i dettagli di una singola lista
     @GetMapping("/{listId}")
     public ResponseEntity<ItineraryListDTO> getListDetails(@PathVariable Long listId) {
         return ResponseEntity.ok(itineraryListService.getListDetails(listId));
     }
 
-    // Recupera direttamente gli oggetti viaggio completi salvati in una lista
     @GetMapping("/{listId}/trips")
     public ResponseEntity<List<com.example.demo.dto.TripDTO>> getTripsInList(@PathVariable Long listId) {
         return ResponseEntity.ok(itineraryListService.getTripsInList(listId));
+    }
+
+    @DeleteMapping("/{listId}")
+    public ResponseEntity<?> deleteList(@PathVariable Long listId, Principal principal) {
+        try {
+            itineraryListService.deleteList(listId, principal.getName());
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 }

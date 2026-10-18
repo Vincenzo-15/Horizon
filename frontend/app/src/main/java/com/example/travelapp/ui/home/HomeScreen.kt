@@ -57,7 +57,7 @@ fun isActivityOrExcursion(trip: TripDTO): Boolean {
     return sameDay || hasActivityKeyword
 }
 
-// Generatore formato standard iCalendar (.ics) per esportazione viaggi e attività
+
 fun buildIcsContent(reservation: ReservationDTO, trip: TripDTO?): String {
     val rawStart = (trip?.startDate ?: reservation.reservationDate.take(10)).replace("-", "")
     val rawEnd = (trip?.endDate ?: rawStart).replace("-", "")
@@ -186,6 +186,7 @@ fun HomeScreen(
         if (tokenUtente.isNotEmpty()) {
             viewModel.fetchTrips(tokenUtente)
             viewModel.fetchMyReservations(tokenUtente)
+            viewModel.fetchMyNotifications(tokenUtente)
         }
     }
 
@@ -703,7 +704,7 @@ fun HomeScreen(
         )
     }
 
-    // --- BOTTOM SHEET: NOTIFICHE E PROMEMORIA PRENOTAZIONI ---
+    // --- BOTTOM SHEET: NOTIFICHE REALI ---
     if (showNotificationsSheet) {
         ModalBottomSheet(
             onDismissRequest = { showNotificationsSheet = false },
@@ -717,21 +718,23 @@ fun HomeScreen(
                 Text("Notifiche e Promemoria", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                if (viewModel.myReservations.isNotEmpty()) {
-                    val latest = viewModel.myReservations.first()
-                    NotificationItem(
-                        title = "Promemoria Prenotazione Confermata",
-                        message = "Hai ${latest.bookedSpots} posto/i prenotati per \"${latest.tripTitle}\". Puoi esportare il promemoria in formato .ics dalla sezione Viaggi.",
-                        time = "Attivo"
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color.LightGray.copy(alpha = 0.4f))
-                }
+                if (viewModel.myNotifications.isEmpty()) {
+                    Text("Non hai nuove notifiche.", color = Color.Gray, modifier = Modifier.padding(vertical = 16.dp))
+                } else {
+                    LazyColumn {
+                        items(viewModel.myNotifications) { notifica ->
+                            // Estraiamo la data dal timestamp se disponibile, oppure usiamo "Oggi"
+                            val timeText = if (notifica.timestamp.length >= 10) notifica.timestamp.take(10) else "Oggi"
 
-                NotificationItem(
-                    title = "Nuove escursioni e viaggi disponibili!",
-                    message = "Scopri i nuovi tour giornalieri e pacchetti viaggio a Roma e Losanna.",
-                    time = "Oggi"
-                )
+                            NotificationItem(
+                                title = notifica.title,
+                                message = notifica.message,
+                                time = timeText
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color.LightGray.copy(alpha = 0.4f))
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }

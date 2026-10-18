@@ -26,6 +26,8 @@ class HomeViewModel : ViewModel() {
     var isLoadingReservations by mutableStateOf(false)
     var reservationsError by mutableStateOf<String?>(null)
 
+    var myNotifications by mutableStateOf<List<com.example.travelapp.network.NotificationDTO>>(emptyList())
+
     fun fetchTrips(token: String) {
         viewModelScope.launch {
             isLoading = true
@@ -68,6 +70,19 @@ class HomeViewModel : ViewModel() {
                 reservationsError = "Errore di connessione durante il recupero delle prenotazioni."
             } finally {
                 isLoadingReservations = false
+            }
+        }
+    }
+
+    fun fetchMyNotifications(token: String) {
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.getMyNotifications("Bearer $token")
+                if (response.isSuccessful && response.body() != null) {
+                    myNotifications = response.body()!!
+                }
+            } catch (e: Exception) {
+                // Gestisci silenziosamente l'errore delle notifiche
             }
         }
     }

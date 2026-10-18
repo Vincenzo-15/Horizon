@@ -5,5 +5,7 @@ data class ItineraryListDTO(
     val name: String,
     val visibility: String,
     val travelerId: Long,
-    val tripIds: List<Long>
+    val ownerName: String? = null,
+    val ownerEmail: String? = null,
+    val tripIds: List<Long>? = emptyList()
 )

@@ -128,6 +128,28 @@ interface ApiService {
         @Header("Authorization") token: String,
         @Path("listId") listId: Long
     ): retrofit2.Response<List<TripDTO>>
+
+    // 7. Modifica nome e visibilità di una lista (es. da SHARED a PRIVATE o viceversa)
+    @PUT("/api/lists/{listId}")
+    suspend fun updateList(
+        @Header("Authorization") token: String,
+        @Path("listId") listId: Long,
+        @Query("name") name: String,
+        @Query("visibility") visibility: String
+    ): retrofit2.Response<com.example.travelapp.network.ItineraryListDTO>
+
+    // 8. Elimina una lista
+    @DELETE("/api/lists/{listId}")
+    suspend fun deleteList(
+        @Header("Authorization") token: String,
+        @Path("listId") listId: Long
+    ): retrofit2.Response<Unit>
+
+    // --- NOTIFICHE ---
+    @GET("/api/notifications")
+    suspend fun getMyNotifications(
+        @Header("Authorization") token: String
+    ): retrofit2.Response<List<com.example.travelapp.network.NotificationDTO>>
 }
 
 data class TripRequest(

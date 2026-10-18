@@ -57,7 +57,6 @@ class FavoriteListsViewModel : ViewModel() {
                 if (createRes.isSuccessful && createRes.body() != null) {
                     val createdList = createRes.body()!!
 
-                    // Se l'utente ha scelto "SHARED" e ha inserito subito l'email di un amico, condividiamola
                     if (visibility == "SHARED" && !initialFriendEmail.isNullOrBlank()) {
                         val shareRes = RetrofitClient.apiService.shareList(
                             authHeader,
@@ -89,6 +88,61 @@ class FavoriteListsViewModel : ViewModel() {
         }
     }
 
+    fun updateList(
+        token: String,
+        listId: Long,
+        newName: String,
+        newVisibility: String,
+        friendEmailToShare: String? = null
+    ) {
+        if (token.isBlank() || newName.isBlank()) return
+
+        viewModelScope.launch {
+            isSubmitting = true
+            try {
+                val authHeader = "Bearer $token"
+                val response = RetrofitClient.apiService.updateList(
+                    authHeader,
+                    listId,
+                    newName.trim(),
+                    newVisibility
+                )
+                if (response.isSuccessful) {
+                    if (newVisibility == "SHARED" && !friendEmailToShare.isNullOrBlank()) {
+                        val shareRes = RetrofitClient.apiService.shareList(
+                            authHeader,
+                            listId,
+                            friendEmailToShare.trim()
+                        )
+                        if (shareRes.isSuccessful) {
+                            isFeedbackError = false
+                            feedbackMessage = "Lista aggiornata e condivisa con $friendEmailToShare!"
+                        } else {
+                            isFeedbackError = true
+                            feedbackMessage = "Visibilità aggiornata, ma non è stato possibile aggiungere $friendEmailToShare."
+                        }
+                    } else {
+                        isFeedbackError = false
+                        feedbackMessage = if (newVisibility == "PRIVATE") {
+                            "Lista impostata come Privata: gli utenti condivisi non hanno più accesso."
+                        } else {
+                            "Lista aggiornata con successo!"
+                        }
+                    }
+                    fetchMyLists(token)
+                } else {
+                    isFeedbackError = true
+                    feedbackMessage = "Impossibile modificare la lista. Solo il creatore può modificarla."
+                }
+            } catch (e: Exception) {
+                isFeedbackError = true
+                feedbackMessage = "Errore di rete durante la modifica della lista."
+            } finally {
+                isSubmitting = false
+            }
+        }
+    }
+
     fun shareListWithFriend(token: String, listId: Long, listName: String, friendEmail: String) {
         if (token.isBlank() || friendEmail.isBlank()) return
 
@@ -111,6 +165,30 @@ class FavoriteListsViewModel : ViewModel() {
             } catch (e: Exception) {
                 isFeedbackError = true
                 feedbackMessage = "Errore di connessione durante la condivisione."
+            } finally {
+                isSubmitting = false
+            }
+        }
+    }
+
+    fun deleteList(token: String, listId: Long) {
+        if (token.isBlank()) return
+
+        viewModelScope.launch {
+            isSubmitting = true
+            try {
+                val response = RetrofitClient.apiService.deleteList("Bearer $token", listId)
+                if (response.isSuccessful) {
+                    isFeedbackError = false
+                    feedbackMessage = "Lista eliminata definitivamente."
+                    fetchMyLists(token)
+                } else {
+                    isFeedbackError = true
+                    feedbackMessage = "Impossibile eliminare la lista. Solo il creatore può farlo."
+                }
+            } catch (e: Exception) {
+                isFeedbackError = true
+                feedbackMessage = "Errore di rete durante l'eliminazione."
             } finally {
                 isSubmitting = false
             }

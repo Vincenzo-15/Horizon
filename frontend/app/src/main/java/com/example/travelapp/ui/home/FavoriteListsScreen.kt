@@ -2,13 +2,13 @@ package com.example.travelapp.ui.home
 
 import android.content.Context
 import android.content.Intent
+import android.util.Base64
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -25,8 +26,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.travelapp.network.ItineraryListDTO
 import com.example.travelapp.viewmodel.FavoriteListsViewModel
+import org.json.JSONObject
 
-// Helper per condividere il link pubblico con capability
+// Estrae l'email ("sub") direttamente dal token JWT senza bisogno di modificare TokenManager
+fun extractEmailFromJwt(token: String): String? {
+    return try {
+        val parts = token.split(".")
+        if (parts.size < 2) return null
+        val payload = String(Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_WRAP))
+        JSONObject(payload).optString("sub").takeIf { it.isNotBlank() }
+    } catch (e: Exception) {
+        null
+    }
+}
+
 fun shareCapabilityLink(context: Context, list: ItineraryListDTO) {
     val capabilityToken = "cap_${list.id}_${list.name.hashCode().toUInt().toString(16)}"
     val publicUrl = "https://horizontravel.it/lists/shared/${list.id}?capability=$capabilityToken"
@@ -47,11 +60,14 @@ fun FavoriteListsScreen(
     viewModel: FavoriteListsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     onListClick: (Long) -> Unit = {}
 ) {
-    var selectedPrivacyFilter by remember { mutableStateOf("ALL") } // "ALL", "PRIVATE", "SHARED", "PUBLIC"
+    var selectedPrivacyFilter by remember { mutableStateOf("ALL") }
     var showCreateDialog by remember { mutableStateOf(false) }
     var listToShareWithFriend by remember { mutableStateOf<ItineraryListDTO?>(null) }
+    var listToEdit by remember { mutableStateOf<ItineraryListDTO?>(null) }
+    var listToDelete by remember { mutableStateOf<ItineraryListDTO?>(null) }
 
     val context = LocalContext.current
+    val myEmail = remember(tokenUtente) { extractEmailFromJwt(tokenUtente) }
 
     LaunchedEffect(tokenUtente) {
         viewModel.fetchMyLists(tokenUtente)
@@ -63,6 +79,129 @@ fun FavoriteListsScreen(
         } else {
             viewModel.myLists.filter { it.visibility.equals(selectedPrivacyFilter, ignoreCase = true) }
         }
+    }
+
+    // --- POPUP: ELIMINA LISTA ---
+    if (listToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { listToDelete = null },
+            containerColor = Color.White,
+            title = {
+                Text("Elimina Lista", fontWeight = FontWeight.ExtraBold, color = TripBlack)
+            },
+            text = {
+                Text(
+                    text = "Sei sicuro di voler eliminare definitivamente la lista \"${listToDelete!!.name}\"? Se è condivisa, non sarà più visibile nemmeno ai tuoi amici.",
+                    color = TripBlack
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteList(tokenUtente, listToDelete!!.id)
+                        listToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Elimina", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { listToDelete = null }) {
+                    Text("Annulla", color = Color.Gray)
+                }
+            }
+        )
+    }
+
+    // --- POPUP: MODIFICA LISTA (CAMBIO VISIBILITÀ PRIVATA <-> CONDIVISA E NOME) ---
+    if (listToEdit != null) {
+        val currentList = listToEdit!!
+        var editName by remember(currentList) { mutableStateOf(currentList.name) }
+        var editVisibility by remember(currentList) { mutableStateOf(currentList.visibility) }
+        var friendEmailToAdd by remember(currentList) { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { listToEdit = null },
+            containerColor = Color.White,
+            title = {
+                Text("Modifica Lista", fontWeight = FontWeight.ExtraBold, color = TripBlack)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = editName,
+                        onValueChange = { editName = it },
+                        label = { Text("Nome della lista") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Cambia visibilità", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TripBlack)
+
+                    PrivacyOptionRow(
+                        title = "Privata",
+                        subtitle = "Solo tu (revoca l'accesso agli amici condivisi)",
+                        icon = Icons.Default.Lock,
+                        selected = editVisibility == "PRIVATE",
+                        onClick = { editVisibility = "PRIVATE" }
+                    )
+                    PrivacyOptionRow(
+                        title = "Condivisa con amici",
+                        subtitle = "Accessibile agli amici invitati via email",
+                        icon = Icons.Default.Person,
+                        selected = editVisibility == "SHARED",
+                        onClick = { editVisibility = "SHARED" }
+                    )
+                    PrivacyOptionRow(
+                        title = "Pubblica tramite link",
+                        subtitle = "Accessibile tramite link con capability",
+                        icon = Icons.Default.Share,
+                        selected = editVisibility == "PUBLIC",
+                        onClick = { editVisibility = "PUBLIC" }
+                    )
+
+                    if (editVisibility == "SHARED") {
+                        OutlinedTextField(
+                            value = friendEmailToAdd,
+                            onValueChange = { friendEmailToAdd = it },
+                            label = { Text("Aggiungi email amico (opzionale)") },
+                            placeholder = { Text("es. amico@email.it") },
+                            leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = TripGreen) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.updateList(
+                            token = tokenUtente,
+                            listId = currentList.id,
+                            newName = editName,
+                            newVisibility = editVisibility,
+                            friendEmailToShare = friendEmailToAdd
+                        )
+                        listToEdit = null
+                    },
+                    enabled = editName.isNotBlank() && !viewModel.isSubmitting,
+                    colors = ButtonDefaults.buttonColors(containerColor = TripGreen),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Salva Modifiche", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { listToEdit = null }) {
+                    Text("Annulla", color = Color.Gray)
+                }
+            }
+        )
     }
 
     // --- POPUP: CREA NUOVA LISTA ---
@@ -360,7 +499,6 @@ fun FavoriteListsScreen(
         } else {
             items(displayedLists) { list ->
                 val isPrivate = list.visibility == "PRIVATE"
-                val isShared = list.visibility == "SHARED"
                 val badgeColor = when (list.visibility) {
                     "PRIVATE" -> Color.DarkGray
                     "SHARED" -> TripGreen
@@ -370,6 +508,12 @@ fun FavoriteListsScreen(
                     "PRIVATE" -> "🔒 PRIVATA"
                     "SHARED" -> "👥 CONDIVISA CON AMICI"
                     else -> "🌐 PUBBLICA (LINK)"
+                }
+
+                // Verifica se l'utente loggato è il creatore della lista
+                val isOwner = remember(list, myEmail) {
+                    if (list.ownerEmail.isNullOrBlank() || myEmail.isNullOrBlank()) true
+                    else list.ownerEmail.equals(myEmail, ignoreCase = true)
                 }
 
                 Surface(
@@ -428,8 +572,8 @@ fun FavoriteListsScreen(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "${list.tripIds?.size ?: 0} esperienze salvate",
-                                    fontSize = 13.sp,
+                                    text = "${list.tripIds?.size ?: 0} esperienze salvate • Creata da: ${list.ownerName ?: "Te"}",
+                                    fontSize = 12.sp,
                                     color = Color.Gray,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -446,43 +590,77 @@ fun FavoriteListsScreen(
                         HorizontalDivider(color = Color.LightGray.copy(alpha = 0.35f))
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        // Azioni rapide di condivisione
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            TextButton(onClick = { listToShareWithFriend = list }) {
-                                Icon(
-                                    Icons.Default.Person,
-                                    contentDescription = null,
-                                    tint = TripGreen,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (isPrivate) "Condividi con amico" else "Invita amico (Email)",
-                                    color = TripGreen,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                            }
-
-                            if (!isPrivate) {
-                                TextButton(onClick = { shareCapabilityLink(context, list) }) {
+                            if (isOwner) {
+                                TextButton(onClick = { listToShareWithFriend = list }) {
                                     Icon(
-                                        Icons.Default.Share,
+                                        Icons.Default.Person,
                                         contentDescription = null,
-                                        tint = TripBlack,
+                                        tint = TripGreen,
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "Link Capability",
-                                        color = TripBlack,
+                                        text = if (isPrivate) "Condividi con amico" else "Invita amico",
+                                        color = TripGreen,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 13.sp
                                     )
+                                }
+                            } else {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = TripGreen,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Condivisa da ${list.ownerName ?: "un amico"}",
+                                        fontSize = 13.sp,
+                                        color = TripDarkGreen,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (!isPrivate) {
+                                    IconButton(onClick = { shareCapabilityLink(context, list) }) {
+                                        Icon(
+                                            Icons.Default.Share,
+                                            contentDescription = "Link Capability",
+                                            tint = TripBlack,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+
+                                if (isOwner) {
+                                    // Pulsante Modifica Lista (cambia da Privata a Condivisa o viceversa)
+                                    IconButton(onClick = { listToEdit = list }) {
+                                        Icon(
+                                            Icons.Default.Edit,
+                                            contentDescription = "Modifica Lista",
+                                            tint = TripGreen,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+
+                                    // Pulsante Elimina Lista
+                                    IconButton(onClick = { listToDelete = list }) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "Elimina Lista",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -497,7 +675,7 @@ fun FavoriteListsScreen(
 fun PrivacyOptionRow(
     title: String,
     subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     selected: Boolean,
     onClick: () -> Unit
 ) {
@@ -517,7 +695,12 @@ fun PrivacyOptionRow(
                 onClick = onClick,
                 colors = RadioButtonDefaults.colors(selectedColor = TripGreen)
             )
-            Icon(icon, contentDescription = null, tint = if (selected) TripGreen else Color.Gray, modifier = Modifier.size(20.dp))
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (selected) TripGreen else Color.Gray,
+                modifier = Modifier.size(20.dp)
+            )
             Spacer(modifier = Modifier.width(8.dp))
             Column {
                 Text(title, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TripBlack)

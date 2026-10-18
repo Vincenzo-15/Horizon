@@ -11,5 +11,7 @@ public class ItineraryListDTO {
     private String name;
     private String visibility;
     private Long travelerId;
-    private Set<Long> tripIds; // Solo gli ID dei viaggi, non gli oggetti interi
+    private String ownerName;
+    private String ownerEmail;
+    private Set<Long> tripIds;
 }
