@@ -150,6 +150,30 @@ interface ApiService {
     suspend fun getMyNotifications(
         @Header("Authorization") token: String
     ): retrofit2.Response<List<com.example.travelapp.network.NotificationDTO>>
+
+    // --- PROFILO UTENTE E IMPOSTAZIONI ---
+
+    @GET("/api/users/me")
+    suspend fun getMyProfile(
+        @Header("Authorization") token: String
+    ): Response<UserProfileDTO>
+
+    @PUT("/api/users/me")
+    suspend fun updateMyProfile(
+        @Header("Authorization") token: String,
+        @Body request: UpdateProfileRequest
+    ): Response<UserProfileDTO>
+
+    @PUT("/api/users/me/password")
+    suspend fun changePassword(
+        @Header("Authorization") token: String,
+        @Body request: ChangePasswordRequest
+    ): Response<ResponseBody>
+
+    @POST("/api/auth/reset-password")
+    suspend fun resetPassword(
+        @Body request: ResetPasswordRequest
+    ): Response<ResponseBody>
 }
 
 data class TripRequest(
@@ -173,4 +197,29 @@ data class RegisterRequest(
     val partitaIva: String? = null,
     @SerializedName("telefono")
     val telefono: String? = null
+)
+
+data class UserProfileDTO(
+    val id: Long,
+    val email: String,
+    val name: String,
+    val role: String,
+    val telefono: String? = null,
+    val partitaIva: String? = null
+)
+
+data class UpdateProfileRequest(
+    val name: String,
+    val telefono: String?,
+    val partitaIva: String? = null
+)
+
+data class ChangePasswordRequest(
+    val oldPassword: String,
+    val newPassword: String
+)
+
+data class ResetPasswordRequest(
+    val email: String,
+    val newPassword: String
 )

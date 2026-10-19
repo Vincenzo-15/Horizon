@@ -34,15 +34,9 @@ import coil.compose.AsyncImage
 import com.example.travelapp.network.ReservationDTO
 import com.example.travelapp.network.TripDTO
 import com.example.travelapp.viewmodel.HomeViewModel
+import com.example.travelapp.ui.theme.*
 import kotlin.math.roundToInt
 
-// Palette Colori Ispirata a TripAdvisor
-val TripGreen = Color(0xFF00AA6C)
-val TripDarkGreen = Color(0xFF004F32)
-val TripBlack = Color(0xFF1A1A1A)
-val TripWarmBg = Color(0xFFF4F6F5)
-val TripAmber = Color(0xFFFFB800)
-val TripOrangeActivity = Color(0xFFE65100)
 
 fun isActivityOrExcursion(trip: TripDTO): Boolean {
     val sameDay = !trip.startDate.isNullOrBlank() && trip.startDate == trip.endDate

@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.travelapp.network.RetrofitClient
 import com.example.travelapp.viewmodel.ListDetailViewModel
+import com.example.travelapp.ui.theme.*
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)

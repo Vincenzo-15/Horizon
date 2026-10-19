@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.travelapp.network.ItineraryListDTO
 import com.example.travelapp.network.RetrofitClient
 import com.example.travelapp.network.TripDTO
 import com.example.travelapp.network.TripRequest
@@ -15,22 +16,18 @@ class TripDetailViewModel : ViewModel() {
     var isLoading by mutableStateOf(true)
     var errorMessage by mutableStateOf<String?>(null)
     var trip by mutableStateOf<TripDTO?>(null)
+    var similarTrips by mutableStateOf<List<TripDTO>>(emptyList())
 
-    // Stati per l'eliminazione (Agenzia)
     var isDeleted by mutableStateOf(false)
-
-    // Stati per la modifica (Agenzia)
     var isUpdating by mutableStateOf(false)
     var updateMessage by mutableStateOf<String?>(null)
 
-    // Stati per la prenotazione (Viaggiatore)
     var isBooking by mutableStateOf(false)
     var bookingSuccess by mutableStateOf(false)
     var bookingMessage by mutableStateOf<String?>(null)
 
-    // --- STATI PER I PREFERITI ---
     var showFavoriteDialog by mutableStateOf(false)
-    var myLists by mutableStateOf<List<com.example.travelapp.network.ItineraryListDTO>>(emptyList())
+    var myLists by mutableStateOf<List<ItineraryListDTO>>(emptyList())
     var favoriteMessage by mutableStateOf<String?>(null)
 
     fun fetchTripDetail(token: String, tripId: Long) {
@@ -38,9 +35,22 @@ class TripDetailViewModel : ViewModel() {
             isLoading = true
             errorMessage = null
             try {
-                val response = RetrofitClient.apiService.getTripById("Bearer $token", tripId)
+                val authHeader = "Bearer $token"
+                val response = RetrofitClient.apiService.getTripById(authHeader, tripId)
                 if (response.isSuccessful && response.body() != null) {
-                    trip = response.body()
+                    val loadedTrip = response.body()!!
+                    trip = loadedTrip
+
+                    // Carica esperienze simili per il carosello orizzontale
+                    val popularRes = RetrofitClient.apiService.getPopularTrips(authHeader)
+                    if (popularRes.isSuccessful && popularRes.body() != null) {
+                        val others = popularRes.body()!!.filter { it.id != tripId }
+                        val sameLocation = others.filter {
+                            !loadedTrip.location.isNullOrBlank() &&
+                                    it.location?.contains(loadedTrip.location, ignoreCase = true) == true
+                        }
+                        similarTrips = (sameLocation + others).distinctBy { it.id }.take(6)
+                    }
                 } else {
                     errorMessage = "Impossibile caricare i dettagli del viaggio (${response.code()})"
                 }
@@ -70,7 +80,6 @@ class TripDetailViewModel : ViewModel() {
         }
     }
 
-    // --- NUOVA FUNZIONE: Aggiorna Viaggio ---
     fun updateTrip(token: String, tripId: Long, request: TripRequest) {
         viewModelScope.launch {
             isUpdating = true
@@ -78,9 +87,8 @@ class TripDetailViewModel : ViewModel() {
             try {
                 val response = RetrofitClient.apiService.updateTrip("Bearer $token", tripId, request)
                 if (response.isSuccessful && response.body() != null) {
-                    // Aggiorniamo i dati locali con quelli appena restituiti dal server
                     trip = response.body()
-                    updateMessage = "Viaggio aggiornato con successo!"
+                    updateMessage = "Offerta e listino aggiornati con successo!"
                 } else {
                     updateMessage = "Errore durante l'aggiornamento (${response.code()})"
                 }
@@ -96,7 +104,7 @@ class TripDetailViewModel : ViewModel() {
         updateMessage = null
     }
 
-    fun bookTrip(token: String, tripId: Long, spots: Int) {
+    fun bookTrip(token: String, tripId: Long, spots: Int, selectedSlotLabel: String = "") {
         viewModelScope.launch {
             isBooking = true
             bookingMessage = null
@@ -104,7 +112,8 @@ class TripDetailViewModel : ViewModel() {
                 val response = RetrofitClient.apiService.bookTrip("Bearer $token", tripId, spots)
                 if (response.isSuccessful) {
                     bookingSuccess = true
-                    bookingMessage = "Prenotazione confermata con successo! Ti abbiamo inviato un'email con il riepilogo."
+                    val slotInfo = if (selectedSlotLabel.isNotBlank()) " per l'opzione \"$selectedSlotLabel\"" else ""
+                    bookingMessage = "Pagamento autorizzato e prenotazione confermata$slotInfo! Puoi esportare il promemoria .ics dalla sezione Viaggi."
                     fetchTripDetail(token, tripId)
                 } else {
                     val errorStr = response.errorBody()?.string() ?: "Errore durante la prenotazione."
@@ -136,7 +145,7 @@ class TripDetailViewModel : ViewModel() {
             try {
                 val response = RetrofitClient.apiService.addTripToList("Bearer $token", listId, tripId)
                 if (response.isSuccessful) {
-                    favoriteMessage = "Aggiunto ai preferiti!"
+                    favoriteMessage = "Aggiunto alla tua lista preferiti!"
                     showFavoriteDialog = false
                 } else {
                     favoriteMessage = "Errore: impossibile aggiungere il viaggio."

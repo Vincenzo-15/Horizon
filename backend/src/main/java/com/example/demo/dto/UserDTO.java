@@ -10,4 +10,6 @@ public class UserDTO {
     private String email;
     private String name;
     private String role;
+    private String telefono;
+    private String partitaIva;
 }

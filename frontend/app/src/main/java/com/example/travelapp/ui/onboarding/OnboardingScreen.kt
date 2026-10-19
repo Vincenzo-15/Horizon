@@ -21,13 +21,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.travelapp.R // <-- Assicurati che questo sia il TUO pacchetto base
+import com.example.travelapp.R
+import com.example.travelapp.ui.theme.*
 import kotlinx.coroutines.launch
 
-// 1. IL MODELLO DATI
 data class OnboardingPage(
     val imageRes: Int,
     val title: String,
@@ -36,51 +35,49 @@ data class OnboardingPage(
 
 @Composable
 fun OnboardingScreen(onFinish: () -> Unit = {}) {
-    // 2. I CONTENUTI DELLE 3 PAGINE
     val pages = listOf(
         OnboardingPage(
             imageRes = R.drawable.onboarding1,
             title = "Pianifica la tua rotta",
-            description = "Scopri destinazioni mozzafiato e crea il tuo itinerario perfetto con Horizon."
+            description = "Scopri destinazioni mozzafiato, viaggi di più giorni ed escursioni giornaliere con Horizon."
         ),
         OnboardingPage(
             imageRes = R.drawable.onboarding2,
             title = "Inizia l'Avventura",
-            description = "Parti da solo o condividi esperienze indimenticabili con i tuoi amici."
+            description = "Crea liste di itinerari private o condivise in tempo reale con i tuoi amici."
         ),
         OnboardingPage(
             imageRes = R.drawable.onboarding3,
             title = "Vivi il Momento",
-            description = "Rilassati e goditi ogni singolo istante."
+            description = "Prenota in un tocco ed esporta i tuoi viaggi direttamente nel calendario (.ics)."
         )
     )
 
     val pagerState = rememberPagerState(pageCount = { pages.size })
     val coroutineScope = rememberCoroutineScope()
 
-    // IL BOX PRINCIPALE: Contiene il carosello a tutto schermo
     Box(modifier = Modifier.fillMaxSize()) {
-
-        // IL CAROSELLO (Orizzontale)[cite: 4]
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize()
         ) { position ->
-            // Chiamiamo la funzione che disegna la singola pagina
             PagerScreen(page = pages[position])
         }
 
-        // TASTO SKIP (In alto a destra, fluttuante)
         TextButton(
             onClick = { onFinish() },
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 20.dp, end = 16.dp)
+                .padding(top = 24.dp, end = 16.dp)
         ) {
-            Text("Salta", color = Color.White.copy(alpha = 0.8f), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = "Salta",
+                color = Color.White.copy(alpha = 0.9f),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
 
-        // ELEMENTI IN BASSO (Pallini e Bottone)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -88,22 +85,21 @@ fun OnboardingScreen(onFinish: () -> Unit = {}) {
                 .padding(bottom = 48.dp, start = 32.dp, end = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-
-            // --- I PALLINI ANIMATI ---
             Row(
                 modifier = Modifier.padding(bottom = 32.dp),
                 horizontalArrangement = Arrangement.Center
             ) {
                 repeat(pages.size) { iteration ->
-                    // ANIMAZIONI: Calcolano la larghezza e il colore fluidamente
                     val isSelected = pagerState.currentPage == iteration
                     val color by animateColorAsState(
-                        targetValue = if (isSelected) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.5f),
-                        animationSpec = tween(durationMillis = 300)
+                        targetValue = if (isSelected) TripGreen else Color.White.copy(alpha = 0.5f),
+                        animationSpec = tween(durationMillis = 300),
+                        label = "dotColor"
                     )
                     val width by animateDpAsState(
-                        targetValue = if (isSelected) 32.dp else 10.dp, // Si allunga dolcemente
-                        animationSpec = tween(durationMillis = 300)
+                        targetValue = if (isSelected) 32.dp else 10.dp,
+                        animationSpec = tween(durationMillis = 300),
+                        label = "dotWidth"
                     )
 
                     Box(
@@ -117,7 +113,6 @@ fun OnboardingScreen(onFinish: () -> Unit = {}) {
                 }
             }
 
-            // --- IL BOTTONE DINAMICO ---
             Button(
                 onClick = {
                     if (pagerState.currentPage == pages.size - 1) {
@@ -130,14 +125,14 @@ fun OnboardingScreen(onFinish: () -> Unit = {}) {
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp), // Bottone leggermente più alto ed elegante
+                    .height(56.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                colors = ButtonDefaults.buttonColors(containerColor = TripGreen)
             ) {
                 Text(
                     text = if (pagerState.currentPage == pages.size - 1) "Inizia il Viaggio" else "Avanti",
                     fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.ExtraBold,
                     color = Color.White
                 )
             }
@@ -145,42 +140,45 @@ fun OnboardingScreen(onFinish: () -> Unit = {}) {
     }
 }
 
-// LA SINGOLA PAGINA (Sfondo + Sfumatura + Testo)
 @Composable
 fun PagerScreen(page: OnboardingPage) {
     Box(modifier = Modifier.fillMaxSize()) {
-
-        // 1. IMMAGINE DI SFONDO (Occupa tutto lo spazio)
         Image(
             painter = painterResource(id = page.imageRes),
             contentDescription = page.title,
-            contentScale = ContentScale.Crop, // Taglia l'immagine per coprire tutto
+            contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
 
-        // 2. LA SFUMATURA NERA (Gradient Scrim)
-        // Parte da trasparente a metà schermo e diventa nero al 90% verso il basso
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.9f)
-                        ),
-                        startY = 500f // Inizia la sfumatura circa a metà schermo
+                        colors = listOf(Color.Transparent, ScrimDark),
+                        startY = 450f
                     )
                 )
         )
 
-        // 3. I TESTI SOPRA LA SFUMATURA
         Column(
             modifier = Modifier
-                .align(Alignment.BottomCenter) // Allineati in basso
-                .padding(bottom = 180.dp, start = 32.dp, end = 32.dp), // Alzati per lasciare spazio al bottone e ai pallini
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 180.dp, start = 32.dp, end = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Surface(
+                color = TripGreen,
+                shape = RoundedCornerShape(50)
+            ) {
+                Text(
+                    text = "HORIZON TRAVEL",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(14.dp))
             Text(
                 text = page.title,
                 fontSize = 32.sp,
@@ -188,11 +186,11 @@ fun PagerScreen(page: OnboardingPage) {
                 color = Color.White,
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             Text(
                 text = page.description,
-                fontSize = 16.sp,
-                color = Color.White.copy(alpha = 0.8f), // Bianco leggermente trasparente
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White.copy(alpha = 0.85f),
                 textAlign = TextAlign.Center
             )
         }

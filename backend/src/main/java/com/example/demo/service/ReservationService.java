@@ -1,9 +1,11 @@
 package com.example.demo.service;
 
 import com.example.demo.dto.ReservationDTO;
+import com.example.demo.model.Notification;
 import com.example.demo.model.Reservation;
 import com.example.demo.model.Trip;
 import com.example.demo.model.User;
+import com.example.demo.repository.NotificationRepository;
 import com.example.demo.repository.ReservationRepository;
 import com.example.demo.repository.TripRepository;
 import com.example.demo.repository.UserRepository;
@@ -23,6 +25,7 @@ public class ReservationService {
     private final ReservationRepository reservationRepository;
     private final UserRepository userRepository;
     private final TripRepository tripRepository;
+    private final NotificationRepository notificationRepository;
     private final ModelMapper modelMapper;
 
     @Transactional
@@ -56,6 +59,20 @@ public class ReservationService {
         tripRepository.save(trip);
 
         Reservation savedReservation = reservationRepository.save(reservation);
+
+        // 1. Notifica per l'Organizzatore (Agenzia che ha creato il viaggio/attività)
+        if (trip.getOrganizer() != null) {
+            String agencyTitle = "Nuova prenotazione ricevuta!";
+            String agencyMsg = traveler.getName() + " ha prenotato " + spots +
+                    " posto/i per \"" + trip.getTitle() + "\" (Totale: €" + totale + ").";
+            notificationRepository.save(new Notification(agencyTitle, agencyMsg, trip.getOrganizer()));
+        }
+
+        // 2. Notifica di promemoria per il Viaggiatore
+        String travelerTitle = "Prenotazione confermata!";
+        String travelerMsg = "Hai prenotato " + spots + " posto/i per \"" + trip.getTitle() +
+                "\". Puoi esportare il promemoria in formato calendario (.ics) dalla sezione Viaggi.";
+        notificationRepository.save(new Notification(travelerTitle, travelerMsg, traveler));
 
         System.out.println("\n================================================");
         System.out.println("✅ NUOVA PRENOTAZIONE CONFERMATA!");

@@ -1,40 +1,84 @@
 package com.example.demo.controller;
 
 import com.example.demo.dto.UserDTO;
-import com.example.demo.model.User;
 import com.example.demo.service.UserService;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
+import java.util.Map;
 
-@RestController // Indica che questa classe gestisce API REST e restituisce dati in formato JSON
-@RequestMapping("/api/users") // Tutte le rotte di questa classe inizieranno con http://localhost:8080/api/users
+@RestController
+@RequestMapping("/api/users")
 @RequiredArgsConstructor
 public class UserController {
 
     private final UserService userService;
 
-    /**
-     * Endpoint per ottenere la lista di tutti gli utenti.
-     * Metodo HTTP: GET
-     * URL: http://localhost:8080/api/users
-     */
     @GetMapping
     public ResponseEntity<List<UserDTO>> getAllUsers() {
         return ResponseEntity.ok(userService.getAllUsers());
     }
 
-    /**
-     * Endpoint per cercare un utente specifico tramite il suo ID.
-     * Metodo HTTP: GET
-     * URL: http://localhost:8080/api/users/1 (dove 1 è l'ID)
-     */
     @GetMapping("/{id}")
     public ResponseEntity<UserDTO> getUserById(@PathVariable Long id) {
-        // @PathVariable estrae l'ID dall'URL e lo passa al metodo
         return ResponseEntity.ok(userService.getUserById(id));
+    }
+
+    // 1. Legge i dati reali dell'utente loggato
+    @GetMapping("/me")
+    public ResponseEntity<UserDTO> getMyProfile(Principal principal) {
+        return ResponseEntity.ok(userService.getCurrentUser(principal.getName()));
+    }
+
+    // 2. Aggiorna i dati dell'account (Nome, Telefono, Partita IVA)
+    @PutMapping("/me")
+    public ResponseEntity<?> updateMyProfile(
+            @RequestBody UpdateProfileRequest request,
+            Principal principal) {
+        try {
+            UserDTO updated = userService.updateCurrentUser(
+                    principal.getName(),
+                    request.getName(),
+                    request.getTelefono(),
+                    request.getPartitaIva()
+            );
+            return ResponseEntity.ok(updated);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // 3. Aggiorna la password dell'utente
+    @PutMapping("/me/password")
+    public ResponseEntity<?> changeMyPassword(
+            @RequestBody ChangePasswordRequest request,
+            Principal principal) {
+        try {
+            userService.changePassword(
+                    principal.getName(),
+                    request.getOldPassword(),
+                    request.getNewPassword()
+            );
+            return ResponseEntity.ok(Map.of("message", "Password aggiornata con successo"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @Data
+    public static class UpdateProfileRequest {
+        private String name;
+        private String telefono;
+        private String partitaIva;
+    }
+
+    @Data
+    public static class ChangePasswordRequest {
+        private String oldPassword;
+        private String newPassword;
     }
 }

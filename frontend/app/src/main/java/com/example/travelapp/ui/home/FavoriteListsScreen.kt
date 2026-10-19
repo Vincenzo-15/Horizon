@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.travelapp.network.ItineraryListDTO
 import com.example.travelapp.viewmodel.FavoriteListsViewModel
+import com.example.travelapp.ui.theme.*
 import org.json.JSONObject
 
 // Estrae l'email ("sub") direttamente dal token JWT senza bisogno di modificare TokenManager

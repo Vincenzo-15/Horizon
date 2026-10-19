@@ -19,7 +19,6 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
-    // 1. Aggiungiamo lo UserService per poter usare la logica di registrazione
     private final UserService userService;
 
     @PostMapping("/login")
@@ -28,17 +27,32 @@ public class AuthController {
         return ResponseEntity.ok(Map.of("token", token));
     }
 
-    // --- NOVITÀ: ENDPOINT DI REGISTRAZIONE ---
-    // Questo risponderà all'indirizzo esatto cercato da Android: /api/auth/register
     @PostMapping("/register")
     public ResponseEntity<UserDTO> register(@Valid @RequestBody User user) {
         UserDTO createdUser = userService.createUser(user);
         return new ResponseEntity<>(createdUser, HttpStatus.CREATED);
     }
 
+    // --- NUOVO: ENDPOINT RECUPERO PASSWORD ---
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordRequest request) {
+        try {
+            userService.resetForgottenPassword(request.getEmail(), request.getNewPassword());
+            return ResponseEntity.ok(Map.of("message", "Password reimpostata con successo!"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @Data
     public static class LoginRequest {
         private String email;
         private String password;
+    }
+
+    @Data
+    public static class ResetPasswordRequest {
+        private String email;
+        private String newPassword;
     }
 }

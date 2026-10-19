@@ -31,6 +31,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.travelapp.ui.theme.*
 import com.example.travelapp.viewmodel.CreateTripViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -43,7 +44,6 @@ fun CreateTripScreen(
     viewModel: CreateTripViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     onNavigateBack: () -> Unit
 ) {
-    // Selettore tipologia: "VIAGGIO" (più giorni) oppure "ATTIVITA" (in giornata)
     var offerType by remember { mutableStateOf("VIAGGIO") }
 
     var title by remember { mutableStateOf("") }
@@ -82,7 +82,6 @@ fun CreateTripScreen(
         if (viewModel.isSuccess) onNavigateBack()
     }
 
-    // --- POPUP CALENDARIO DINAMICO (Range per Viaggi, Data Singola per Attività) ---
     if (showDatePicker) {
         val formatter = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
 
@@ -126,7 +125,7 @@ fun CreateTripScreen(
                             if (selectedMillis != null) {
                                 val formatted = formatter.format(Date(selectedMillis))
                                 startDate = formatted
-                                endDate = formatted // Attività in giornata: inizio e fine coincidono
+                                endDate = formatted
                             }
                             showDatePicker = false
                         }
@@ -145,8 +144,6 @@ fun CreateTripScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(TripWarmBg)) {
-
-        // --- CAROSELLO IMMAGINI ---
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -208,7 +205,6 @@ fun CreateTripScreen(
             Icon(Icons.Default.ArrowBack, contentDescription = "Indietro", tint = TripBlack)
         }
 
-        // --- FORM SOVRAPPOSTO ---
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -221,12 +217,10 @@ fun CreateTripScreen(
         ) {
             Text(
                 text = if (offerType == "VIAGGIO") "Nuovo Pacchetto Viaggio" else "Nuova Attività / Escursione",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.ExtraBold,
+                style = MaterialTheme.typography.headlineLarge,
                 color = TripBlack
             )
 
-            // --- SELETTORE VIAGGIO VS ATTIVITÀ ---
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -236,9 +230,7 @@ fun CreateTripScreen(
                     color = if (offerType == "VIAGGIO") TripGreen else TripWarmBg,
                     modifier = Modifier
                         .weight(1f)
-                        .clickable {
-                            offerType = "VIAGGIO"
-                        }
+                        .clickable { offerType = "VIAGGIO" }
                 ) {
                     Row(
                         modifier = Modifier.padding(vertical = 12.dp, horizontal = 10.dp),
@@ -301,7 +293,6 @@ fun CreateTripScreen(
                 shape = RoundedCornerShape(16.dp)
             )
 
-            // --- SELETTORE DATE ADATTIVO ---
             if (offerType == "VIAGGIO") {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Box(modifier = Modifier.weight(1f).clickable { showDatePicker = true }) {
@@ -378,7 +369,7 @@ fun CreateTripScreen(
                 OutlinedTextField(
                     value = price,
                     onValueChange = { price = it },
-                    label = { Text("Prezzo (€)") },
+                    label = { Text("Prezzo Base (€)") },
                     leadingIcon = { Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = TripGreen) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
@@ -403,8 +394,8 @@ fun CreateTripScreen(
                 onClick = {
                     val finalEndDate = if (offerType == "ATTIVITA") startDate else endDate
                     viewModel.createTrip(
-                        context,       // Passa context per primo
-                        tokenUtente,   // Poi il token
+                        context,
+                        tokenUtente,
                         title,
                         description,
                         price,

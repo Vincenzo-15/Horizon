@@ -25,23 +25,26 @@ class RegisterViewModel : ViewModel() {
         return password.matches(passwordPattern.toRegex())
     }
 
-    // Aggiunti i parametri per l'organizzatore
     fun eseguiRegistrazione(
-        nome: String, email: String, pass: String, confirmPass: String,
-        isOrganizzatore: Boolean, partitaIva: String, telefono: String
+        nome: String,
+        email: String,
+        pass: String,
+        confirmPass: String,
+        isOrganizzatore: Boolean,
+        partitaIva: String,
+        telefono: String
     ) {
         if (nome.isBlank() || email.isBlank() || pass.isBlank()) {
             errorMessage = "Per favore, compila tutti i campi obbligatori."
             return
         }
 
-        // CONTROLLO AGENZIA
         if (isOrganizzatore && (partitaIva.isBlank() || telefono.isBlank())) {
             errorMessage = "Le agenzie devono inserire Partita IVA e Telefono."
             return
         }
 
-        if (!isEmailValid(email)) {
+        if (!isEmailValid(email.trim())) {
             errorMessage = "Inserisci un indirizzo email valido."
             return
         }
@@ -63,20 +66,22 @@ class RegisterViewModel : ViewModel() {
             errorMessage = null
 
             try {
-                // Impostiamo null se l'utente non è un'agenzia
-                val pIvaFinale = if (isOrganizzatore) partitaIva else null
-                val telFinale = if (isOrganizzatore) telefono else null
+                val pIvaFinale = if (isOrganizzatore) partitaIva.trim() else null
+                val telFinale = telefono.trim().takeIf { it.isNotBlank() }
 
                 val request = RegisterRequest(
-                    name = nome, email = email, password = pass, role = ruolo,
-                    partitaIva = pIvaFinale, telefono = telFinale
+                    name = nome.trim(),
+                    email = email.trim(),
+                    password = pass,
+                    role = ruolo,
+                    partitaIva = pIvaFinale,
+                    telefono = telFinale
                 )
                 val response = RetrofitClient.apiService.register(request)
 
                 if (response.isSuccessful) {
                     isSuccess = true
                 } else {
-                    // Traduciamo i codici HTTP in messaggi user-friendly
                     errorMessage = when (response.code()) {
                         400 -> "I dati non sono validi o questa email è già registrata."
                         401, 403 -> "Non sei autorizzato a eseguire questa operazione."
@@ -86,9 +91,8 @@ class RegisterViewModel : ViewModel() {
                         else -> "Si è verificato un errore imprevisto. Riprova più tardi."
                     }
                 }
-
             } catch (e: Exception) {
-                errorMessage = "Impossibile connettersi al server. Verifica che IntelliJ sia in esecuzione."
+                errorMessage = "Impossibile connettersi al server."
             } finally {
                 isLoading = false
             }

@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.travelapp.network.NotificationDTO
 import com.example.travelapp.network.ReservationDTO
 import com.example.travelapp.network.RetrofitClient
 import com.example.travelapp.network.TripDTO
@@ -16,8 +17,13 @@ class OrganizerViewModel : ViewModel() {
     var errorMessage by mutableStateOf<String?>(null)
 
     var myTrips by mutableStateOf<List<TripDTO>>(emptyList())
-    var agencyOrders by mutableStateOf<List<ReservationDTO>>(emptyList()) // Lista completa degli ordini
+    var agencyOrders by mutableStateOf<List<ReservationDTO>>(emptyList())
+    var myNotifications by mutableStateOf<List<NotificationDTO>>(emptyList())
+
     var totalOrders by mutableStateOf(0)
+    var totalRevenue by mutableStateOf(0.0)
+    var totalBookedSpots by mutableStateOf(0)
+    var averageCatalogRating by mutableStateOf(0.0)
 
     fun fetchMyTrips(token: String) {
         if (token.isBlank()) return
@@ -29,24 +35,35 @@ class OrganizerViewModel : ViewModel() {
             try {
                 val authHeader = "Bearer $token"
 
-                // 1. Carica i pacchetti viaggio (dal più recente)
+                // 1. Carica i pacchetti pubblicati dall'agenzia
                 val response = RetrofitClient.apiService.getMyTrips(authHeader)
                 if (response.isSuccessful && response.body() != null) {
                     myTrips = response.body()!!.reversed()
+                    val rated = myTrips.filter { it.averageRating > 0 }
+                    averageCatalogRating = if (rated.isNotEmpty()) {
+                        rated.map { it.averageRating }.average()
+                    } else 4.9
                 } else {
                     errorMessage = "Impossibile caricare i pacchetti (${response.code()})"
                 }
 
-                // 2. Carica le prenotazioni ricevute
+                // 2. Carica le prenotazioni ricevute e calcola i KPI (Fatturato e Ospiti)
                 val ordersResponse = RetrofitClient.apiService.getAgencyOrders(authHeader)
                 if (ordersResponse.isSuccessful && ordersResponse.body() != null) {
-                    agencyOrders = ordersResponse.body()!!.reversed() // Mostriamo i più recenti in alto
+                    agencyOrders = ordersResponse.body()!!.reversed()
                     totalOrders = agencyOrders.size
+                    totalRevenue = agencyOrders.sumOf { it.totalPaid }
+                    totalBookedSpots = agencyOrders.sumOf { it.bookedSpots }
+                }
+
+                // 3. Carica eventuali notifiche dal backend
+                val notifResponse = RetrofitClient.apiService.getMyNotifications(authHeader)
+                if (notifResponse.isSuccessful && notifResponse.body() != null) {
+                    myNotifications = notifResponse.body()!!
                 }
 
             } catch (e: Exception) {
                 errorMessage = "Errore di connessione al server."
-                android.util.Log.e("API_ERROR", "Errore: ${e.message}", e)
             } finally {
                 isLoading = false
             }
