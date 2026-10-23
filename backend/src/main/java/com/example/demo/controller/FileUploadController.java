@@ -1,5 +1,6 @@
 package com.example.demo.controller;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -9,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -17,32 +19,31 @@ import java.util.UUID;
 @RequestMapping("/api/upload")
 public class FileUploadController {
 
-    private final String UPLOAD_DIR = "uploads/";
+    @Value("${app.upload.dir:uploads}")
+    private String uploadDir;
 
     @PostMapping
     public ResponseEntity<List<String>> uploadFiles(@RequestParam("files") List<MultipartFile> files) {
         List<String> fileUrls = new ArrayList<>();
 
         try {
-            // Se la cartella "uploads" non esiste, la crea automaticamente
-            Path uploadPath = Paths.get(UPLOAD_DIR);
+            Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
             if (!Files.exists(uploadPath)) {
                 Files.createDirectories(uploadPath);
             }
 
             for (MultipartFile file : files) {
-                // Genera un nome univoco (es. 550e8400-e29b-41d4-a716-446655440000.jpg)
+                if (file.isEmpty()) continue;
+
                 String originalFilename = file.getOriginalFilename();
                 String extension = originalFilename != null && originalFilename.contains(".")
                         ? originalFilename.substring(originalFilename.lastIndexOf("."))
                         : ".jpg";
-                String newFilename = UUID.randomUUID().toString() + extension;
+                String newFilename = UUID.randomUUID() + extension;
 
-                // Salva fisicamente il file su disco
                 Path filePath = uploadPath.resolve(newFilename);
-                Files.copy(file.getInputStream(), filePath);
+                Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
 
-                // Costruisce l'URL pubblico da salvare nel Database
                 String fileDownloadUri = ServletUriComponentsBuilder.fromCurrentContextPath()
                         .path("/uploads/")
                         .path(newFilename)

@@ -11,7 +11,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
@@ -63,12 +62,9 @@ fun LoginScreen(
         }
     }
 
-    // --- BOTTOM SHEET: RECUPERO PASSWORD FUNZIONANTE ---
+    // --- BOTTOM SHEET: RICHIESTA LINK DI RECUPERO VIA EMAIL ---
     if (showForgotPasswordSheet) {
         var resetEmail by remember { mutableStateOf(email) }
-        var newPass by remember { mutableStateOf("") }
-        var confirmNewPass by remember { mutableStateOf("") }
-        var showResetPass by remember { mutableStateOf(false) }
 
         ModalBottomSheet(
             onDismissRequest = { showForgotPasswordSheet = false },
@@ -89,19 +85,19 @@ fun LoginScreen(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "SICUREZZA HORIZON",
+                        text = "RECUPERO CREDENZIALI",
                         style = MaterialTheme.typography.labelSmall,
                         color = TripGreen
                     )
                 }
 
                 Text(
-                    text = "Reimposta la tua Password",
+                    text = "Hai dimenticato la password?",
                     style = MaterialTheme.typography.headlineMedium,
                     color = TripBlack
                 )
                 Text(
-                    text = "Inserisci l'indirizzo email associato al tuo account e scegli una nuova password sicura.",
+                    text = "Inserisci l'indirizzo email del tuo account. Ti invieremo un'email con un link sicuro valido per 15 minuti per impostare una nuova password.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray
                 )
@@ -109,45 +105,10 @@ fun LoginScreen(
                 OutlinedTextField(
                     value = resetEmail,
                     onValueChange = { resetEmail = it },
-                    label = { Text("Email registrata") },
+                    label = { Text("La tua email registrata") },
+                    placeholder = { Text("es. nome@email.it") },
                     leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = TripGreen) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                val resetVisualTransformation = if (showResetPass) VisualTransformation.None else PasswordVisualTransformation()
-
-                OutlinedTextField(
-                    value = newPass,
-                    onValueChange = { newPass = it },
-                    label = { Text("Nuova Password") },
-                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = TripGreen) },
-                    trailingIcon = {
-                        TextButton(onClick = { showResetPass = !showResetPass }) {
-                            Text(
-                                text = if (showResetPass) "Nascondi" else "Mostra",
-                                color = TripGreen,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp
-                            )
-                        }
-                    },
-                    visualTransformation = resetVisualTransformation,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = confirmNewPass,
-                    onValueChange = { confirmNewPass = it },
-                    label = { Text("Conferma Nuova Password") },
-                    leadingIcon = { Icon(Icons.Default.Check, contentDescription = null, tint = TripGreen) },
-                    visualTransformation = resetVisualTransformation,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -163,28 +124,30 @@ fun LoginScreen(
 
                 Button(
                     onClick = {
-                        viewModel.resetPassword(
+                        viewModel.sendPasswordResetEmail(
                             email = resetEmail,
-                            newPassword = newPass,
-                            confirmPassword = confirmNewPass,
-                            onSuccess = {
+                            onEmailSent = {
                                 email = resetEmail
-                                password = ""
                                 showForgotPasswordSheet = false
                             }
                         )
                     },
-                    enabled = !viewModel.isResettingPassword,
+                    enabled = !viewModel.isSendingResetEmail,
                     colors = ButtonDefaults.buttonColors(containerColor = TripGreen),
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp)
                 ) {
-                    if (viewModel.isResettingPassword) {
+                    if (viewModel.isSendingResetEmail) {
                         CircularProgressIndicator(modifier = Modifier.size(22.dp), color = Color.White)
                     } else {
-                        Text("Aggiorna Password", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = Color.White)
+                        Text(
+                            text = "Invia Email di Recupero",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 16.sp,
+                            color = Color.White
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
@@ -192,13 +155,13 @@ fun LoginScreen(
         }
     }
 
-    // Dialog di conferma quando la password è stata reimpostata con successo
+    // Dialog di conferma invio dell'email
     if (viewModel.resetFeedbackMessage != null && !viewModel.isResetError) {
         AlertDialog(
             onDismissRequest = { viewModel.clearResetFeedback() },
             containerColor = Color.White,
             title = {
-                Text("Password Aggiornata!", fontWeight = FontWeight.ExtraBold, color = TripDarkGreen)
+                Text("Controlla la tua Email", fontWeight = FontWeight.ExtraBold, color = TripDarkGreen)
             },
             text = {
                 Text(viewModel.resetFeedbackMessage!!, color = TripBlack)
@@ -208,7 +171,7 @@ fun LoginScreen(
                     onClick = { viewModel.clearResetFeedback() },
                     colors = ButtonDefaults.buttonColors(containerColor = TripGreen)
                 ) {
-                    Text("Accedi ora", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Ho capito", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         )

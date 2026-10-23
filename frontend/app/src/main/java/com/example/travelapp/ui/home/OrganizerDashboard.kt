@@ -1,5 +1,6 @@
 package com.example.travelapp.ui.home
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,8 +39,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.travelapp.network.ReservationDTO
 import com.example.travelapp.network.TripDTO
-import com.example.travelapp.viewmodel.OrganizerViewModel
 import com.example.travelapp.ui.theme.*
+import com.example.travelapp.viewmodel.OrganizerViewModel
 import java.util.Locale
 
 fun Modifier.bounceClick(scaleDown: Float = 0.95f, onClick: () -> Unit) = composed {
@@ -82,6 +83,7 @@ fun OrganizerDashboard(
     var selectedTab by remember { mutableStateOf("Console") }
     var catalogFilter by remember { mutableStateOf("TUTTI") } // "TUTTI", "VIAGGI", "ATTIVITA", "LOW_SPOTS"
     var showNotificationsSheet by remember { mutableStateOf(false) }
+    var showFinancialSummary by remember { mutableStateOf(false) }
 
     LaunchedEffect(tokenUtente) {
         if (tokenUtente.isNotEmpty()) {
@@ -93,11 +95,17 @@ fun OrganizerDashboard(
         when (catalogFilter) {
             "VIAGGI" -> viewModel.myTrips.filter { !isActivityOrExcursion(it) }
             "ATTIVITA" -> viewModel.myTrips.filter { isActivityOrExcursion(it) }
-            "LOW_SPOTS" -> viewModel.myTrips.filter { it.availableSpots in 1..5 }
+            "LOW_SPOTS" -> viewModel.myTrips.filter { it.availableSpots <= 5 }
             else -> viewModel.myTrips
         }
     }
 
+    val totalRemainingSpots = remember(viewModel.myTrips) {
+        viewModel.myTrips.sumOf { it.availableSpots.coerceAtLeast(0) }
+    }
+    val soldOutOrLowCount = remember(viewModel.myTrips) {
+        viewModel.myTrips.count { it.availableSpots <= 5 }
+    }
     val hasNotifications = viewModel.agencyOrders.isNotEmpty() || viewModel.myNotifications.isNotEmpty()
 
     Scaffold(
@@ -122,7 +130,7 @@ fun OrganizerDashboard(
             ) {
                 NavigationBarItem(
                     icon = { Icon(Icons.Default.Home, "Console") },
-                    label = { Text("Console", fontWeight = FontWeight.SemiBold) },
+                    label = { Text("Oggi", fontWeight = FontWeight.SemiBold) },
                     selected = selectedTab == "Console",
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = TripGreen,
@@ -179,7 +187,7 @@ fun OrganizerDashboard(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 104.dp)
                     ) {
-                        // 1. HEADER STILE HOMESCREEN CON CAMPANELLA NOTIFICHE PRENOTAZIONI
+                        // 1. HEADER CON CAMPANELLA NOTIFICHE
                         item {
                             Row(
                                 modifier = Modifier
@@ -207,14 +215,13 @@ fun OrganizerDashboard(
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Console Agenzia",
+                                        text = "Console Operativa",
                                         fontSize = 26.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = TripBlack
                                     )
                                 }
 
-                                // Campanella Notifiche al posto della rotella di Refresh
                                 Box(
                                     modifier = Modifier
                                         .size(48.dp)
@@ -246,12 +253,12 @@ fun OrganizerDashboard(
                             }
                         }
 
-                        // 2. HERO CARD FINANZIARIA E KPI (ISPIRATA AD AIRBNB HOST DASHBOARD)
+                        // 2. CARD PRINCIPALE: STATO OPERATIVO & OSPITI (STILE AIRBNB HOST "TODAY" / VIATOR SUPPLIER)
                         item {
                             Surface(
                                 shape = RoundedCornerShape(24.dp),
-                                color = TripBlack,
-                                shadowElevation = 6.dp,
+                                color = Color.White,
+                                shadowElevation = 4.dp,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 24.dp, vertical = 6.dp)
@@ -262,53 +269,138 @@ fun OrganizerDashboard(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column {
-                                            Text(
-                                                text = "VOLUME PRENOTAZIONI GENERATO",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White.copy(alpha = 0.7f),
-                                                letterSpacing = 0.8.sp
-                                            )
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = "€${String.format(Locale.ITALY, "%.2f", viewModel.totalRevenue)}",
-                                                fontSize = 32.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = Color.White
-                                            )
-                                        }
                                         Surface(
-                                            color = TripGreen,
+                                            color = TripGreen.copy(alpha = 0.12f),
                                             shape = RoundedCornerShape(50)
                                         ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(Icons.Default.Star, contentDescription = null, tint = TripAmber, modifier = Modifier.size(16.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(
-                                                    text = String.format(Locale.US, "%.1f", viewModel.averageCatalogRating),
-                                                    color = Color.White,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    fontSize = 13.sp
-                                                )
-                                            }
+                                            Text(
+                                                text = "✓ TOUR OPERATOR VERIFICATO",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = TripDarkGreen,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                            )
+                                        }
+
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Star, contentDescription = null, tint = TripAmber, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = String.format(Locale.US, "%.1f", viewModel.averageCatalogRating),
+                                                color = TripBlack,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 14.sp
+                                            )
+                                            Text(
+                                                text = " qualità media",
+                                                color = Color.Gray,
+                                                fontSize = 12.sp
+                                            )
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.height(18.dp))
-                                    HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
                                     Spacer(modifier = Modifier.height(14.dp))
+                                    Text(
+                                        text = "Panoramica Attività & Ospiti",
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = TripBlack
+                                    )
+                                    Text(
+                                        text = "Monitoraggio in tempo reale di capienza, adesioni e catalogo",
+                                        fontSize = 12.sp,
+                                        color = Color.Gray
+                                    )
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    // Griglia KPI Operativi (Ospiti, Prenotazioni, Annunci, Posti liberi)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        OperationalMetricBox(
+                                            modifier = Modifier.weight(1f),
+                                            value = "${viewModel.totalBookedSpots}",
+                                            label = "Ospiti Confermati",
+                                            accentColor = TripGreen
+                                        )
+                                        OperationalMetricBox(
+                                            modifier = Modifier.weight(1f),
+                                            value = "${viewModel.totalOrders}",
+                                            label = "Prenotazioni",
+                                            accentColor = TripDarkGreen
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
 
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        AgencyKpiMetric("${viewModel.myTrips.size}", "Annunci Attivi")
-                                        AgencyKpiMetric("${viewModel.totalOrders}", "Prenotazioni")
-                                        AgencyKpiMetric("${viewModel.totalBookedSpots}", "Posti Venduti")
+                                        OperationalMetricBox(
+                                            modifier = Modifier.weight(1f),
+                                            value = "${viewModel.myTrips.size}",
+                                            label = "Offerte a Catalogo",
+                                            accentColor = TripBlack
+                                        )
+                                        OperationalMetricBox(
+                                            modifier = Modifier.weight(1f),
+                                            value = "$totalRemainingSpots",
+                                            label = "Posti Liberi Totali",
+                                            accentColor = if (soldOutOrLowCount > 0) TripOrangeActivity else TripGreen
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.35f))
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Sezione contabile discreta espandibile a richiesta
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { showFinancialSummary = !showFinancialSummary }
+                                            .padding(vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (showFinancialSummary) "Nascondi riepilogo contabile" else "Mostra riepilogo contabile riservato",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TripGreen
+                                        )
+                                        Icon(
+                                            imageVector = if (showFinancialSummary) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                            contentDescription = null,
+                                            tint = TripGreen
+                                        )
+                                    }
+
+                                    AnimatedVisibility(visible = showFinancialSummary) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = TripWarmBg,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 8.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(14.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("Volume prenotazioni confermate:", fontSize = 13.sp, color = Color.DarkGray)
+                                                Text(
+                                                    text = "€${String.format(Locale.ITALY, "%.2f", viewModel.totalRevenue)}",
+                                                    fontSize = 16.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = TripDarkGreen
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -327,13 +419,13 @@ fun OrganizerDashboard(
                                 ) {
                                     Column {
                                         Text(
-                                            text = "Ultime Prenotazioni Ricevute",
+                                            text = "Ultime Adesioni Ricevute",
                                             fontSize = 19.sp,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = TripBlack
                                         )
                                         Text(
-                                            text = "Tocca una prenotazione per vedere l'annuncio associato",
+                                            text = "Tocca una prenotazione per gestire l'offerta associata",
                                             fontSize = 12.sp,
                                             color = Color.Gray
                                         )
@@ -363,7 +455,7 @@ fun OrganizerDashboard(
                         item {
                             SectionHeader(
                                 title = "Il tuo Catalogo Esperienze",
-                                subtitle = "Filtra i tuoi annunci e gestisci prezzi dinamici e disponibilità"
+                                subtitle = "Filtra i tuoi annunci e gestisci calendario prezzi e posti disponibili"
                             )
                             Spacer(modifier = Modifier.height(12.dp))
 
@@ -387,7 +479,7 @@ fun OrganizerDashboard(
                                     }
                                 }
                                 item {
-                                    OfferTypeChip("⚠️ In esaurimento", catalogFilter == "LOW_SPOTS") {
+                                    OfferTypeChip("⚠️ Pochi posti / Esauriti ($soldOutOrLowCount)", catalogFilter == "LOW_SPOTS") {
                                         catalogFilter = "LOW_SPOTS"
                                     }
                                 }
@@ -465,13 +557,13 @@ fun OrganizerDashboard(
                             ) {
                                 Column {
                                     Text(
-                                        text = "Prenotazioni Ricevute",
+                                        text = "Registro Prenotazioni",
                                         fontSize = 26.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = TripBlack
                                     )
                                     Text(
-                                        text = "${viewModel.totalOrders} ordini confermati • ${viewModel.totalBookedSpots} posti totali",
+                                        text = "${viewModel.totalOrders} ordini confermati • ${viewModel.totalBookedSpots} ospiti totali",
                                         fontSize = 13.sp,
                                         color = Color.Gray
                                     )
@@ -515,7 +607,7 @@ fun OrganizerDashboard(
         }
     }
 
-    // --- BOTTOM SHEET NOTIFICHE AGENZIA (PRENOTAZIONI RICEVUTE COME NOTIFICHE) ---
+    // --- BOTTOM SHEET NOTIFICHE AGENZIA ---
     if (showNotificationsSheet) {
         ModalBottomSheet(
             onDismissRequest = { showNotificationsSheet = false },
@@ -532,7 +624,7 @@ fun OrganizerDashboard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Notifiche & Prenotazioni",
+                        text = "Notifiche & Nuove Prenotazioni",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = TripBlack
@@ -542,7 +634,7 @@ fun OrganizerDashboard(
                         shape = RoundedCornerShape(50)
                     ) {
                         Text(
-                            text = "${viewModel.agencyOrders.size} ricevute",
+                            text = "${viewModel.agencyOrders.size} ordini",
                             color = TripDarkGreen,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.ExtraBold,
@@ -572,8 +664,8 @@ fun OrganizerDashboard(
                                     .padding(vertical = 6.dp)
                             ) {
                                 NotificationItem(
-                                    title = "Nuova Prenotazione #${order.id} (+€${order.totalPaid})",
-                                    message = "Un viaggiatore ha prenotato ${order.bookedSpots} posto/i per \"${order.tripTitle}\". Tocca per gestire l'offerta.",
+                                    title = "Prenotazione #${order.id} • ${order.bookedSpots} ospiti",
+                                    message = "Confermata per \"${order.tripTitle}\". Tocca per aprire l'annuncio.",
                                     time = order.reservationDate.take(10)
                                 )
                             }
@@ -597,10 +689,32 @@ fun OrganizerDashboard(
 }
 
 @Composable
-private fun AgencyKpiMetric(value: String, label: String) {
-    Column {
-        Text(text = value, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
-        Text(text = label, fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
+private fun OperationalMetricBox(
+    modifier: Modifier = Modifier,
+    value: String,
+    label: String,
+    accentColor: Color
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = TripWarmBg
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(
+                text = value,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = accentColor
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.DarkGray
+            )
+        }
     }
 }
 
@@ -636,10 +750,10 @@ private fun RecentOrderCompactCard(
                     )
                 }
                 Text(
-                    text = "+€${order.totalPaid}",
+                    text = "${order.bookedSpots} ospiti",
                     color = TripGreen,
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 14.sp
+                    fontSize = 13.sp
                 )
             }
             Spacer(modifier = Modifier.height(10.dp))
@@ -653,7 +767,7 @@ private fun RecentOrderCompactCard(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "${order.bookedSpots} posti • ${order.reservationDate.take(10)}",
+                text = "Confermato il ${order.reservationDate.take(10)}",
                 fontSize = 12.sp,
                 color = Color.Gray
             )
@@ -715,7 +829,7 @@ fun AgencyOrderCard(order: ReservationDTO, onTripClick: (Long) -> Unit) {
                     Text(text = "${order.bookedSpots} posti prenotati", fontSize = 13.sp, color = Color.DarkGray, fontWeight = FontWeight.SemiBold)
                 }
                 Text(
-                    text = "Incasso: €${order.totalPaid}",
+                    text = "Totale: €${order.totalPaid}",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = TripDarkGreen
@@ -732,6 +846,7 @@ fun OrganizerTripCard(
     onClick: () -> Unit = {}
 ) {
     val isActivity = isActivityOrExcursion(trip)
+    val isSoldOut = trip.availableSpots <= 0
     val lowSpots = trip.availableSpots in 1..5
 
     Card(
@@ -789,7 +904,7 @@ fun OrganizerTripCard(
                             shape = RoundedCornerShape(50)
                         ) {
                             Text(
-                                text = "$ordersCount ordini",
+                                text = "$ordersCount prenotazioni",
                                 color = Color.White,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
@@ -861,7 +976,7 @@ fun OrganizerTripCard(
                         Icon(Icons.Default.DateRange, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(5.dp))
                         Text(
-                            text = if (isActivity) "Dal ${trip.startDate} • Prezzi giornalieri" else "${trip.startDate} → ${trip.endDate}",
+                            text = if (isActivity) "Dal ${trip.startDate} • Calendario attivo" else "${trip.startDate} → ${trip.endDate}",
                             fontSize = 12.sp,
                             color = Color.DarkGray,
                             fontWeight = FontWeight.SemiBold
@@ -869,13 +984,21 @@ fun OrganizerTripCard(
                     }
 
                     Surface(
-                        color = if (lowSpots) TripOrangeActivity.copy(alpha = 0.12f) else TripGreen.copy(alpha = 0.12f),
+                        color = when {
+                            isSoldOut -> MaterialTheme.colorScheme.error.copy(alpha = 0.14f)
+                            lowSpots -> TripOrangeActivity.copy(alpha = 0.12f)
+                            else -> TripGreen.copy(alpha = 0.12f)
+                        },
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            text = "${trip.availableSpots} posti liberi",
+                            text = if (isSoldOut) "🚫 ESAURITO (0 posti)" else "${trip.availableSpots} posti liberi",
                             fontSize = 11.sp,
-                            color = if (lowSpots) TripOrangeActivity else TripDarkGreen,
+                            color = when {
+                                isSoldOut -> MaterialTheme.colorScheme.error
+                                lowSpots -> TripOrangeActivity
+                                else -> TripDarkGreen
+                            },
                             fontWeight = FontWeight.ExtraBold,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )

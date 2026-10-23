@@ -5,88 +5,69 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.travelapp.network.ForgotPasswordRequest
 import com.example.travelapp.network.LoginRequest
-import com.example.travelapp.network.ResetPasswordRequest
 import com.example.travelapp.network.RetrofitClient
 import kotlinx.coroutines.launch
 
 class LoginViewModel : ViewModel() {
 
-    // 1. LA MEMORIA DEL CERVELLO (Gli Stati)
-    // Queste variabili dicono alla grafica cosa mostrare (es. la rotellina di caricamento)
     var isLoading by mutableStateOf(false)
     var errorMessage by mutableStateOf<String?>(null)
     var loginSuccess by mutableStateOf(false)
     var token by mutableStateOf<String?>(null)
 
-    // Stati per il Recupero Password
-    var isResettingPassword by mutableStateOf(false)
+    // Stati per l'invio dell'email di recupero password
+    var isSendingResetEmail by mutableStateOf(false)
     var resetFeedbackMessage by mutableStateOf<String?>(null)
     var isResetError by mutableStateOf(false)
 
-    private fun isPasswordStrong(password: String): Boolean {
-        val passwordPattern = "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=!]).{8,}$"
-        return password.matches(passwordPattern.toRegex())
-    }
-
-    // 2. L'AZIONE (Il click del bottone)
     fun eseguiLogin(emailInserita: String, passwordInserita: String) {
-        // viewModelScope.launch lancia il compito in "background" per non bloccare il telefono
+        if (emailInserita.isBlank() || passwordInserita.isBlank()) {
+            errorMessage = "Inserisci sia l'email che la password."
+            return
+        }
+
         viewModelScope.launch {
             isLoading = true
-            errorMessage = null // Resettiamo eventuali errori precedenti
+            errorMessage = null
 
             try {
-                // Prepariamo il pacco (DTO)
-                val request = LoginRequest(emailInserita, passwordInserita)
-
-                // Chiediamo al postino (Retrofit) di portarlo al backend
+                val request = LoginRequest(emailInserita.trim(), passwordInserita)
                 val response = RetrofitClient.apiService.login(request)
 
-                // Controlliamo la risposta del server
                 if (response.isSuccessful && response.body() != null) {
-                    token = response.body()!!.token // Preso!
+                    token = response.body()!!.token
                     loginSuccess = true
                 } else {
                     errorMessage = "Credenziali errate (Errore 400/403)"
                 }
             } catch (e: Exception) {
-                // Questo scatta se il server è spento o non c'è internet
                 errorMessage = "Impossibile connettersi al server"
             } finally {
-                isLoading = false // Spegniamo la rotellina di caricamento
+                isLoading = false
             }
         }
     }
 
-    fun resetPassword(email: String, newPassword: String, confirmPassword: String, onSuccess: () -> Unit) {
-        if (email.isBlank() || newPassword.isBlank()) {
+    fun sendPasswordResetEmail(email: String, onEmailSent: () -> Unit) {
+        if (email.isBlank() || !email.contains("@")) {
             isResetError = true
-            resetFeedbackMessage = "Inserisci l'email del tuo account e la nuova password."
-            return
-        }
-        if (!isPasswordStrong(newPassword)) {
-            isResetError = true
-            resetFeedbackMessage = "La password deve avere almeno 8 caratteri, una maiuscola, un numero e un carattere speciale (!@#$%^&+=!)."
-            return
-        }
-        if (newPassword != confirmPassword) {
-            isResetError = true
-            resetFeedbackMessage = "Le due password non coincidono."
+            resetFeedbackMessage = "Inserisci un indirizzo email valido."
             return
         }
 
         viewModelScope.launch {
-            isResettingPassword = true
+            isSendingResetEmail = true
             resetFeedbackMessage = null
             try {
-                val response = RetrofitClient.apiService.resetPassword(
-                    ResetPasswordRequest(email = email.trim(), newPassword = newPassword)
+                val response = RetrofitClient.apiService.requestPasswordReset(
+                    ForgotPasswordRequest(email = email.trim())
                 )
                 if (response.isSuccessful) {
                     isResetError = false
-                    resetFeedbackMessage = "Password reimpostata con successo! Ora puoi accedere con la nuova password."
-                    onSuccess()
+                    resetFeedbackMessage = "Abbiamo inviato un'email a ${email.trim()} con il link sicuro per reimpostare la password. Apri il link dalla tua casella di posta per scegliere la nuova password."
+                    onEmailSent()
                 } else {
                     val err = response.errorBody()?.string()
                     isResetError = true
@@ -96,7 +77,7 @@ class LoginViewModel : ViewModel() {
                 isResetError = true
                 resetFeedbackMessage = "Errore di connessione al server."
             } finally {
-                isResettingPassword = false
+                isSendingResetEmail = false
             }
         }
     }

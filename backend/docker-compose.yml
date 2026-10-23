@@ -14,21 +14,34 @@ services:
       - ./db-init/init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: always
 
-  # 2. Il Backend Spring Boot
+  # 2. Server SMTP e Webmail locale per testare il Recupero Password (http://localhost:8025)
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: horizon_mailpit
+    ports:
+      - "1025:1025" # Porta SMTP interna
+      - "8025:8025" # Interfaccia Webmail nel browser (http://localhost:8025)
+    restart: always
+
+  # 3. Il Backend Spring Boot
   backend:
     build: .
     container_name: horizon_backend
     ports:
       - "8080:8080"
     environment:
-      # Sovrascrive dinamicamente url, utente e password dell'application.properties
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/travel_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: 1234
+      SPRING_MAIL_HOST: mailpit
+      SPRING_MAIL_PORT: 1025
+      APP_UPLOAD_DIR: /app/uploads
+    volumes:
+      - ./uploads:/app/uploads
     depends_on:
       - db
+      - mailpit
     restart: always
 
 volumes:
-  # Rende i dati del database persistenti anche se spegni i container
   postgres_data:

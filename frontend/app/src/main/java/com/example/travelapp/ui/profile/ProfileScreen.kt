@@ -44,8 +44,6 @@ import com.example.travelapp.ui.theme.*
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
-
-
 // Pagine interne della sezione Profilo
 private enum class ProfileDestination {
     MAIN,
@@ -307,12 +305,12 @@ private fun ProfileMainPage(
             .background(TripWarmBg),
         contentPadding = PaddingValues(bottom = 36.dp)
     ) {
-        // HEADER IN STILE HOMESCREEN
+        // HEADER IN STILE HOMESCREEN - SPAZIO AUMENTATO A 56.DP
         item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 16.dp),
+                    .padding(start = 24.dp, end = 24.dp, top = 56.dp, bottom = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1069,7 +1067,7 @@ private fun PartnerPlanPage(
 }
 
 // =========================================================================
-// HEADER CONDIVISO PER LE SOTTOPAGINE (STILE HOMESCREEN)
+// HEADER CONDIVISO PER LE SOTTOPAGINE CON MARGINE TOP 56.DP
 // =========================================================================
 @Composable
 private fun SubPageHeader(
@@ -1081,7 +1079,7 @@ private fun SubPageHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 16.dp),
+            .padding(start = 24.dp, end = 24.dp, top = 56.dp, bottom = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(

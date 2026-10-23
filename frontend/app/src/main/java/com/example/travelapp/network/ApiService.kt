@@ -170,9 +170,9 @@ interface ApiService {
         @Body request: ChangePasswordRequest
     ): Response<ResponseBody>
 
-    @POST("/api/auth/reset-password")
-    suspend fun resetPassword(
-        @Body request: ResetPasswordRequest
+    @POST("/api/auth/forgot-password")
+    suspend fun requestPasswordReset(
+        @Body request: ForgotPasswordRequest
     ): Response<ResponseBody>
 }
 
@@ -219,7 +219,6 @@ data class ChangePasswordRequest(
     val newPassword: String
 )
 
-data class ResetPasswordRequest(
+data class ForgotPasswordRequest(
     val email: String,
-    val newPassword: String
 )

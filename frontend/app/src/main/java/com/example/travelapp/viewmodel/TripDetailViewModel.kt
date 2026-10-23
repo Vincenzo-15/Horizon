@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.travelapp.network.ItineraryListDTO
+import com.example.travelapp.network.ReservationDTO
 import com.example.travelapp.network.RetrofitClient
 import com.example.travelapp.network.TripDTO
 import com.example.travelapp.network.TripRequest
@@ -17,6 +18,9 @@ class TripDetailViewModel : ViewModel() {
     var errorMessage by mutableStateOf<String?>(null)
     var trip by mutableStateOf<TripDTO?>(null)
     var similarTrips by mutableStateOf<List<TripDTO>>(emptyList())
+
+    // Prenotazioni già effettuate dall'utente corrente per questo specifico viaggio/attività
+    var userReservationsForThisTrip by mutableStateOf<List<ReservationDTO>>(emptyList())
 
     var isDeleted by mutableStateOf(false)
     var isUpdating by mutableStateOf(false)
@@ -41,10 +45,18 @@ class TripDetailViewModel : ViewModel() {
                     val loadedTrip = response.body()!!
                     trip = loadedTrip
 
-                    // Carica esperienze simili per il carosello orizzontale
+                    // 1. Verifica se il viaggiatore ha già prenotato questo viaggio
+                    try {
+                        val myResResponse = RetrofitClient.apiService.getMyReservations(authHeader)
+                        if (myResResponse.isSuccessful && myResResponse.body() != null) {
+                            userReservationsForThisTrip = myResResponse.body()!!.filter { it.tripId == tripId }
+                        }
+                    } catch (_: Exception) {}
+
+                    // 2. Carica esperienze simili con posti disponibili (> 0)
                     val popularRes = RetrofitClient.apiService.getPopularTrips(authHeader)
                     if (popularRes.isSuccessful && popularRes.body() != null) {
-                        val others = popularRes.body()!!.filter { it.id != tripId }
+                        val others = popularRes.body()!!.filter { it.id != tripId && it.availableSpots > 0 }
                         val sameLocation = others.filter {
                             !loadedTrip.location.isNullOrBlank() &&
                                     it.location?.contains(loadedTrip.location, ignoreCase = true) == true
@@ -112,8 +124,8 @@ class TripDetailViewModel : ViewModel() {
                 val response = RetrofitClient.apiService.bookTrip("Bearer $token", tripId, spots)
                 if (response.isSuccessful) {
                     bookingSuccess = true
-                    val slotInfo = if (selectedSlotLabel.isNotBlank()) " per l'opzione \"$selectedSlotLabel\"" else ""
-                    bookingMessage = "Pagamento autorizzato e prenotazione confermata$slotInfo! Puoi esportare il promemoria .ics dalla sezione Viaggi."
+                    val slotInfo = if (selectedSlotLabel.isNotBlank()) " per \"$selectedSlotLabel\"" else ""
+                    bookingMessage = "Pagamento autorizzato e prenotazione confermata$slotInfo! I posti disponibili sono stati aggiornati e puoi esportare il file .ics dalla tab Viaggi."
                     fetchTripDetail(token, tripId)
                 } else {
                     val errorStr = response.errorBody()?.string() ?: "Errore durante la prenotazione."
