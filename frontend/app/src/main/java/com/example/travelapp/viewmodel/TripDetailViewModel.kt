@@ -1,10 +1,12 @@
 package com.example.travelapp.viewmodel
 
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.travelapp.network.CreateReviewRequest
 import com.example.travelapp.network.ItineraryListDTO
 import com.example.travelapp.network.ReservationDTO
 import com.example.travelapp.network.RetrofitClient
@@ -19,8 +21,9 @@ class TripDetailViewModel : ViewModel() {
     var trip by mutableStateOf<TripDTO?>(null)
     var similarTrips by mutableStateOf<List<TripDTO>>(emptyList())
 
-    // Prenotazioni già effettuate dall'utente corrente per questo specifico viaggio/attività
     var userReservationsForThisTrip by mutableStateOf<List<ReservationDTO>>(emptyList())
+    var currentUserName by mutableStateOf("Viaggiatore Horizon")
+    var currentUserEmail by mutableStateOf("")
 
     var isDeleted by mutableStateOf(false)
     var isUpdating by mutableStateOf(false)
@@ -45,7 +48,16 @@ class TripDetailViewModel : ViewModel() {
                     val loadedTrip = response.body()!!
                     trip = loadedTrip
 
-                    // 1. Verifica se il viaggiatore ha già prenotato questo viaggio
+                    // Recupera i dati reali dell'utente loggato per intestare correttamente la ricevuta
+                    try {
+                        val profileRes = RetrofitClient.apiService.getMyProfile(authHeader)
+                        if (profileRes.isSuccessful && profileRes.body() != null) {
+                            currentUserName = profileRes.body()!!.name
+                            currentUserEmail = profileRes.body()!!.email
+                        }
+                    } catch (_: Exception) {}
+
+                    // Verifica se il viaggiatore ha già prenotato questo viaggio
                     try {
                         val myResResponse = RetrofitClient.apiService.getMyReservations(authHeader)
                         if (myResResponse.isSuccessful && myResResponse.body() != null) {
@@ -53,7 +65,7 @@ class TripDetailViewModel : ViewModel() {
                         }
                     } catch (_: Exception) {}
 
-                    // 2. Carica esperienze simili con posti disponibili (> 0)
+                    // Carica esperienze simili con posti disponibili (> 0)
                     val popularRes = RetrofitClient.apiService.getPopularTrips(authHeader)
                     if (popularRes.isSuccessful && popularRes.body() != null) {
                         val others = popularRes.body()!!.filter { it.id != tripId && it.availableSpots > 0 }
@@ -71,6 +83,22 @@ class TripDetailViewModel : ViewModel() {
             } finally {
                 isLoading = false
             }
+        }
+    }
+
+    // Salva la recensione nel database PostgreSQL e aggiorna media e conteggio
+    fun submitReview(token: String, tripId: Long, rating: Int, comment: String) {
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.addReviewToTrip(
+                    token = "Bearer $token",
+                    tripId = tripId,
+                    request = CreateReviewRequest(rating = rating, comment = comment.trim())
+                )
+                if (response.isSuccessful && response.body() != null) {
+                    trip = response.body()
+                }
+            } catch (_: Exception) {}
         }
     }
 
@@ -116,16 +144,55 @@ class TripDetailViewModel : ViewModel() {
         updateMessage = null
     }
 
-    fun bookTrip(token: String, tripId: Long, spots: Int, selectedSlotLabel: String = "") {
+    fun bookTrip(
+        context: Context,
+        token: String,
+        tripId: Long,
+        spots: Int,
+        selectedDateIso: String,
+        selectedSlotLabel: String,
+        paymentMethodLabel: String,
+        unitPricePaid: Double,
+        onDateBookedSuccess: () -> Unit = {}
+    ) {
         viewModelScope.launch {
             isBooking = true
             bookingMessage = null
             try {
-                val response = RetrofitClient.apiService.bookTrip("Bearer $token", tripId, spots)
+                val authHeader = "Bearer $token"
+                val response = RetrofitClient.apiService.bookTrip(authHeader, tripId, spots)
                 if (response.isSuccessful) {
+                    // 1. Scala i posti sulla data specifica selezionata nel calendario
+                    val datePrefs = context.getSharedPreferences("date_inventory_prefs", Context.MODE_PRIVATE)
+                    val key = "booked_${tripId}_$selectedDateIso"
+                    val prevBooked = datePrefs.getInt(key, 0)
+                    datePrefs.edit().putInt(key, prevBooked + spots).apply()
+
+                    // 2. Recupera l'ID dell'ultima prenotazione per salvare i metadati della Ricevuta
+                    try {
+                        val myRes = RetrofitClient.apiService.getMyReservations(authHeader)
+                        val latestRes = myRes.body()?.maxByOrNull { it.id }
+                        val receiptPrefs = context.getSharedPreferences("booking_receipts_prefs", Context.MODE_PRIVATE)
+                        val editor = receiptPrefs.edit()
+                        if (latestRes != null) {
+                            editor.putString("traveler_name_${latestRes.id}", currentUserName)
+                            editor.putString("traveler_email_${latestRes.id}", currentUserEmail)
+                            editor.putString("payment_method_${latestRes.id}", paymentMethodLabel)
+                            editor.putString("selected_slot_${latestRes.id}", selectedSlotLabel)
+                            editor.putFloat("unit_price_${latestRes.id}", unitPricePaid.toFloat())
+                        }
+                        // Salva anche per tripId come fallback immediato
+                        editor.putString("last_traveler_name_trip_$tripId", currentUserName)
+                        editor.putString("last_traveler_email_trip_$tripId", currentUserEmail)
+                        editor.putString("last_payment_method_trip_$tripId", paymentMethodLabel)
+                        editor.putString("last_selected_slot_trip_$tripId", selectedSlotLabel)
+                        editor.apply()
+                    } catch (_: Exception) {}
+
                     bookingSuccess = true
                     val slotInfo = if (selectedSlotLabel.isNotBlank()) " per \"$selectedSlotLabel\"" else ""
-                    bookingMessage = "Pagamento autorizzato e prenotazione confermata$slotInfo! I posti disponibili sono stati aggiornati e puoi esportare il file .ics dalla tab Viaggi."
+                    bookingMessage = "Pagamento autorizzato ($paymentMethodLabel) e prenotazione confermata$slotInfo! I posti della data scelta sono stati aggiornati."
+                    onDateBookedSuccess()
                     fetchTripDetail(token, tripId)
                 } else {
                     val errorStr = response.errorBody()?.string() ?: "Errore durante la prenotazione."

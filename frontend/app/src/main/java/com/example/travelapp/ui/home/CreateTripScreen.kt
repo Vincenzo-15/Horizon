@@ -5,9 +5,12 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -37,6 +40,40 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// Modello per ogni tappa creata dall'agenzia
+data class EditableStepDraft(
+    val title: String = "",
+    val duration: String = "",
+    val ticketInfo: String = "🎟️ Biglietto incluso",
+    val description: String = ""
+)
+
+// Codifica la panoramica e le tappe personalizzate in una stringa strutturata salvata su DB
+fun encodeOverviewAndSteps(overview: String, steps: List<EditableStepDraft>, isActivity: Boolean): String {
+    val cleanOverview = overview.trim()
+    val validSteps = steps.filter { it.title.isNotBlank() || it.description.isNotBlank() }
+    if (validSteps.isEmpty()) return cleanOverview
+
+    val serializedSteps = validSteps.mapIndexed { idx, step ->
+        val safeTitle = step.title.trim().ifEmpty {
+            if (isActivity) "Tappa ${idx + 1}" else "Giorno ${idx + 1}"
+        }.replace("||", " - ")
+        val safeDuration = step.duration.trim().ifEmpty {
+            if (isActivity) "45 min" else "Giorno ${idx + 1}"
+        }.replace("||", " ")
+        val safeTicket = step.ticketInfo.trim().ifEmpty {
+            "📍 Tappa inclusa"
+        }.replace("||", " ")
+        val safeDesc = step.description.trim().ifEmpty {
+            "Visita guidata e tempo dedicato all'esplorazione della tappa."
+        }.replace("||", " ").replace("\n", " ")
+
+        "@@STEP@@$safeTitle||$safeDuration||$safeTicket||$safeDesc"
+    }.joinToString("\n")
+
+    return "$cleanOverview\n$serializedSteps"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateTripScreen(
@@ -48,13 +85,31 @@ fun CreateTripScreen(
 
     var title by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
+    var overview by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
     var spots by remember { mutableStateOf("") }
 
     var startDate by remember { mutableStateOf("") }
     var endDate by remember { mutableStateOf("") }
     var showDatePicker by remember { mutableStateOf(false) }
+
+    // Lista dinamica di tappe Step-by-Step impostate dall'agenzia durante la creazione
+    val itinerarySteps = remember {
+        mutableStateListOf(
+            EditableStepDraft(
+                title = "",
+                duration = "1 ora",
+                ticketInfo = "🎟️ Biglietto salta-fila incluso",
+                description = ""
+            ),
+            EditableStepDraft(
+                title = "",
+                duration = "45 min",
+                ticketInfo = "📍 Visita guidata inclusa",
+                description = ""
+            )
+        )
+    }
 
     var imageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     val context = LocalContext.current
@@ -137,17 +192,20 @@ fun CreateTripScreen(
             ) {
                 DatePicker(
                     state = singleDatePickerState,
-                    title = { Text(text = "Data dell'Attività / Escursione", modifier = Modifier.padding(16.dp)) }
+                    title = { Text(text = "Data di inizio disponibilità dell'Attività", modifier = Modifier.padding(16.dp)) }
                 )
             }
         }
     }
 
+    val isActivity = offerType == "ATTIVITA"
+    val accentColor = if (isActivity) TripOrangeActivity else TripGreen
+
     Box(modifier = Modifier.fillMaxSize().background(TripWarmBg)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(300.dp)
+                .height(290.dp)
                 .clickable { photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
         ) {
             if (imageUris.isNotEmpty()) {
@@ -176,13 +234,13 @@ fun CreateTripScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(TripGreen.copy(alpha = 0.12f)),
+                        .background(accentColor.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Photo", modifier = Modifier.size(48.dp), tint = TripGreen)
+                        Icon(Icons.Default.Add, contentDescription = "Add Photo", modifier = Modifier.size(48.dp), tint = accentColor)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Tocca per aggiungere fino a 5 foto", color = TripGreen, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("Tocca per caricare fino a 5 foto dalla galleria", color = accentColor, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
             }
@@ -190,7 +248,7 @@ fun CreateTripScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)), startY = 350f))
+                    .background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)), startY = 320f))
             )
         }
 
@@ -208,7 +266,7 @@ fun CreateTripScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 260.dp)
+                .padding(top = 250.dp)
                 .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
                 .background(Color.White)
                 .verticalScroll(rememberScrollState())
@@ -216,18 +274,19 @@ fun CreateTripScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             Text(
-                text = if (offerType == "VIAGGIO") "Nuovo Pacchetto Viaggio" else "Nuova Attività / Escursione",
+                text = if (!isActivity) "Nuovo Pacchetto Viaggio" else "Nuova Attività / Escursione",
                 style = MaterialTheme.typography.headlineLarge,
                 color = TripBlack
             )
 
+            // Selettore Viaggio vs Attività
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = if (offerType == "VIAGGIO") TripGreen else TripWarmBg,
+                    color = if (!isActivity) TripGreen else TripWarmBg,
                     modifier = Modifier
                         .weight(1f)
                         .clickable { offerType = "VIAGGIO" }
@@ -238,17 +297,17 @@ fun CreateTripScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "✈️ Viaggio",
+                            text = "✈️ Viaggio Multi-Giorno",
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 14.sp,
-                            color = if (offerType == "VIAGGIO") Color.White else TripBlack
+                            fontSize = 13.sp,
+                            color = if (!isActivity) Color.White else TripBlack
                         )
                     }
                 }
 
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = if (offerType == "ATTIVITA") TripOrangeActivity else TripWarmBg,
+                    color = if (isActivity) TripOrangeActivity else TripWarmBg,
                     modifier = Modifier
                         .weight(1f)
                         .clickable {
@@ -262,10 +321,10 @@ fun CreateTripScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "🎟️ Attività / Tour",
+                            text = "🎟️ Attività in Giornata",
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 14.sp,
-                            color = if (offerType == "ATTIVITA") Color.White else TripBlack
+                            fontSize = 13.sp,
+                            color = if (isActivity) Color.White else TripBlack
                         )
                     }
                 }
@@ -276,7 +335,7 @@ fun CreateTripScreen(
                 onValueChange = { title = it },
                 label = {
                     Text(
-                        if (offerType == "VIAGGIO") "Titolo del viaggio (es. Weekend a Losanna)"
+                        if (!isActivity) "Titolo del viaggio (es. Weekend a Losanna)"
                         else "Nome attività (es. Tour guidato Colosseo)"
                     )
                 },
@@ -287,13 +346,13 @@ fun CreateTripScreen(
             OutlinedTextField(
                 value = location,
                 onValueChange = { location = it },
-                label = { Text("Città / Località (es. Roma, Losanna)") },
-                leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null, tint = TripGreen) },
+                label = { Text("Città / Punto d'incontro (es. Roma, Losanna)") },
+                leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null, tint = accentColor) },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp)
             )
 
-            if (offerType == "VIAGGIO") {
+            if (!isActivity) {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Box(modifier = Modifier.weight(1f).clickable { showDatePicker = true }) {
                         OutlinedTextField(
@@ -333,11 +392,11 @@ fun CreateTripScreen(
             } else {
                 Box(modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true }) {
                     OutlinedTextField(
-                        value = startDate.ifEmpty { "Tocca per scegliere il giorno dell'attività" },
+                        value = startDate.ifEmpty { "Tocca per scegliere la data di apertura calendario" },
                         onValueChange = {},
                         readOnly = true,
                         enabled = false,
-                        label = { Text("Data dell'Escursione / Attività") },
+                        label = { Text("Data Apertura Calendario Attività") },
                         leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null, tint = TripOrangeActivity) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
@@ -351,26 +410,12 @@ fun CreateTripScreen(
                 }
             }
 
-            OutlinedTextField(
-                value = description,
-                onValueChange = { description = it },
-                label = {
-                    Text(
-                        if (offerType == "VIAGGIO") "Programma e descrizione del viaggio"
-                        else "Dettagli dell'attività, durata in ore e punto d'incontro"
-                    )
-                },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 4,
-                shape = RoundedCornerShape(16.dp)
-            )
-
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 OutlinedTextField(
                     value = price,
                     onValueChange = { price = it },
                     label = { Text("Prezzo Base (€)") },
-                    leadingIcon = { Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = TripGreen) },
+                    leadingIcon = { Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = accentColor) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(16.dp)
@@ -378,11 +423,262 @@ fun CreateTripScreen(
                 OutlinedTextField(
                     value = spots,
                     onValueChange = { spots = it },
-                    label = { Text("Posti totali") },
-                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = TripGreen) },
+                    label = { Text(if (isActivity) "Posti per Data" else "Posti per Turno") },
+                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = accentColor) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(16.dp)
+                )
+            }
+
+            OutlinedTextField(
+                value = overview,
+                onValueChange = { overview = it },
+                label = {
+                    Text("Panoramica generale dell'esperienza (Introduzione)")
+                },
+                placeholder = {
+                    Text("Descrivi in breve cosa rende unica questa esperienza e cosa comprende...")
+                },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3,
+                shape = RoundedCornerShape(16.dp)
+            )
+
+            // =========================================================================
+            // COSTRUTTORE DINAMICO ITINERARIO STEP-BY-STEP (STILE TRIPADVISOR)
+            // =========================================================================
+            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Place, contentDescription = null, tint = accentColor, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isActivity) "Costruttore Tappe dell'Attività"
+                            else "Costruttore Programma Giorno per Giorno",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TripBlack
+                        )
+                    }
+                    Text(
+                        text = "Definisci gli step che il viaggiatore vedrà nella timeline della pagina dettagli",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                }
+            }
+
+            val inclusionPresets = remember(isActivity) {
+                if (isActivity) {
+                    listOf(
+                        "🎟️ Biglietto salta-fila incluso",
+                        "📍 Sosta con guida ufficiale",
+                        "🍷 Degustazione inclusa",
+                        "📸 Sosta panoramica",
+                        "⛴️ Trasporto / Barca incluso"
+                    )
+                } else {
+                    listOf(
+                        "🏨 Hotel + Colazione inclusi",
+                        "🎟️ Ingressi e guida inclusi",
+                        "🍷 Cena tipica inclusa",
+                        "🚄 Trasferimenti inclusi",
+                        "✈️ Assistenza coordinatore"
+                    )
+                }
+            }
+
+            val durationPresets = remember(isActivity) {
+                if (isActivity) listOf("30 min", "45 min", "1 ora", "1 ora 30 min", "2 ore")
+                else listOf("Giorno 1", "Giorno 2", "Giorno 3", "Giorno 4", "Mattinata")
+            }
+
+            itinerarySteps.forEachIndexed { index, step ->
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = TripWarmBg,
+                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(accentColor),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "${index + 1}",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = if (isActivity) "Tappa #${index + 1} dell'escursione"
+                                    else "Tappa / Giorno #${index + 1} del viaggio",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 15.sp,
+                                    color = TripBlack
+                                )
+                            }
+
+                            if (itinerarySteps.size > 1) {
+                                IconButton(
+                                    onClick = { itinerarySteps.removeAt(index) },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Rimuovi tappa",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = step.title,
+                            onValueChange = { itinerarySteps[index] = step.copy(title = it) },
+                            label = {
+                                Text(
+                                    if (isActivity) "Nome luogo / tappa (es. Arena dei Gladiatori)"
+                                    else "Titolo della giornata (es. Arrivo e Centro Storico)"
+                                )
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = step.duration,
+                            onValueChange = { itinerarySteps[index] = step.copy(duration = it) },
+                            label = { Text(if (isActivity) "Durata della sosta (es. 45 min)" else "Periodo (es. Giorno 1)") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Chip rapidi per la durata
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(durationPresets) { dur ->
+                                val selected = step.duration == dur
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = if (selected) accentColor else Color.White,
+                                    modifier = Modifier.clickable {
+                                        itinerarySteps[index] = step.copy(duration = dur)
+                                    }
+                                ) {
+                                    Text(
+                                        text = dur,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (selected) Color.White else TripBlack,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = "Cosa è incluso in questa tappa:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.DarkGray
+                        )
+
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(inclusionPresets) { inc ->
+                                val selected = step.ticketInfo == inc
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = if (selected) TripGreen else Color.White,
+                                    modifier = Modifier.clickable {
+                                        itinerarySteps[index] = step.copy(ticketInfo = inc)
+                                    }
+                                ) {
+                                    Text(
+                                        text = inc,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (selected) Color.White else TripBlack,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = step.description,
+                            onValueChange = { itinerarySteps[index] = step.copy(description = it) },
+                            label = { Text("Cosa si fa in questa tappa") },
+                            placeholder = { Text("Spiega passo dopo passo cosa vedranno o faranno i partecipanti...") },
+                            minLines = 2,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
+            OutlinedButton(
+                onClick = {
+                    val nextNum = itinerarySteps.size + 1
+                    itinerarySteps.add(
+                        EditableStepDraft(
+                            title = "",
+                            duration = if (isActivity) "45 min" else "Giorno $nextNum",
+                            ticketInfo = if (isActivity) "📍 Sosta con guida ufficiale" else "🎟️ Ingressi e guida inclusi",
+                            description = ""
+                        )
+                    )
+                },
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.5.dp, accentColor),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, tint = accentColor)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (isActivity) "Aggiungi un'altra Tappa all'Attività"
+                    else "Aggiungi Tappa / Giornata al Viaggio",
+                    color = accentColor,
+                    fontWeight = FontWeight.ExtraBold
                 )
             }
 
@@ -392,12 +688,17 @@ fun CreateTripScreen(
 
             Button(
                 onClick = {
-                    val finalEndDate = if (offerType == "ATTIVITA") startDate else endDate
+                    val finalEndDate = if (isActivity) startDate else endDate
+                    val combinedDescriptionWithSteps = encodeOverviewAndSteps(
+                        overview = overview.ifBlank { "Esperienza ufficiale organizzata a $location." },
+                        steps = itinerarySteps,
+                        isActivity = isActivity
+                    )
                     viewModel.createTrip(
                         context,
                         tokenUtente,
                         title,
-                        description,
+                        combinedDescriptionWithSteps,
                         price,
                         startDate,
                         finalEndDate,
@@ -406,9 +707,7 @@ fun CreateTripScreen(
                         imageUris
                     )
                 },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (offerType == "VIAGGIO") TripGreen else TripOrangeActivity
-                ),
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor),
                 modifier = Modifier.fillMaxWidth().height(58.dp),
                 shape = RoundedCornerShape(16.dp),
                 enabled = !viewModel.isLoading
@@ -417,7 +716,7 @@ fun CreateTripScreen(
                     CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
                 } else {
                     Text(
-                        text = if (offerType == "VIAGGIO") "Pubblica Viaggio" else "Pubblica Attività",
+                        text = if (!isActivity) "Pubblica Viaggio e Programma" else "Pubblica Attività e Tappe",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.White

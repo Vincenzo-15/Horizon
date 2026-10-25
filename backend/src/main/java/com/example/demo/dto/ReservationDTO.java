@@ -11,10 +11,10 @@ public class ReservationDTO {
     private LocalDateTime reservationDate;
     private String status;
     private Long travelerId;
+    private String travelerName;
+    private String travelerEmail;
     private Long tripId;
     private String tripTitle;
-
-    // --- NUOVI CAMPI ---
     private Integer bookedSpots;
     private Double totalPaid;
 }

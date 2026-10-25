@@ -21,7 +21,7 @@ public class Trip {
     @Column(nullable = false)
     private String title;
 
-    @Column(length = 1000)
+    @Column(length = 5000)
     private String description;
 
     @Column(nullable = false)

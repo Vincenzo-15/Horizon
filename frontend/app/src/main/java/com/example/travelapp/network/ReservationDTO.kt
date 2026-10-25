@@ -5,6 +5,8 @@ data class ReservationDTO(
     val reservationDate: String,
     val status: String,
     val travelerId: Long,
+    val travelerName: String? = null,
+    val travelerEmail: String? = null,
     val tripId: Long,
     val tripTitle: String,
     val bookedSpots: Int,

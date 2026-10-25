@@ -1,6 +1,9 @@
 package com.example.travelapp.ui.home
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -49,11 +53,13 @@ import kotlin.math.roundToInt
 
 data class DynamicAvailabilityOption(
     val id: Int,
+    val dateIso: String,
     val title: String,
     val subtitle: String,
-    val badge: String,
+    val seasonLabel: String,
     val pricePerPerson: Double,
-    val availableSpots: Int
+    val availableSpots: Int,
+    val isPastDate: Boolean
 )
 
 data class CalendarDayPrice(
@@ -61,8 +67,18 @@ data class CalendarDayPrice(
     val dateIso: String,
     val formattedLabel: String,
     val price: Double,
-    val tier: String, // "WEEKEND", "PROMO", "BASE"
-    val badgeText: String
+    val availableSpotsForDay: Int,
+    val isHighDemandOrHoliday: Boolean,
+    val seasonNote: String,
+    val isPastDate: Boolean = false
+)
+
+data class ItineraryStepItem(
+    val stepNumber: Int,
+    val title: String,
+    val duration: String,
+    val ticketInfo: String,
+    val description: String
 )
 
 data class ExperienceReview(
@@ -72,16 +88,134 @@ data class ExperienceReview(
     val comment: String
 )
 
-// Genera i turni per i Viaggi Multi-Giorno
+data class ParsedTripContent(
+    val overview: String,
+    val steps: List<ItineraryStepItem>,
+    val reviews: List<ExperienceReview>,
+    val rawReviewBlocks: String
+)
+
+// Restituisce il Calendar di oggi azzerato a mezzanotte (00:00:00) per bloccare tutte le date passate
+fun getTodayMidnightCalendar(): Calendar {
+    return Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+}
+
+fun calculateSeasonalMultiplier(monthZeroBased: Int, dayOfMonth: Int, dayOfWeek: Int, weekendMarkupPercent: Int): Pair<Double, String> {
+    val month = monthZeroBased + 1
+
+    if ((month == 12 && dayOfMonth >= 20) || (month == 1 && dayOfMonth <= 6)) {
+        return 1.35 to "Alta Stagione • Festività Natalizie"
+    }
+    if (month == 8 && dayOfMonth in 10..20) {
+        return 1.40 to "Altissima Stagione • Settimana di Ferragosto"
+    }
+    if (month == 8) return 1.30 to "Alta Stagione Estiva (Agosto)"
+    if (month == 7) return 1.25 to "Alta Stagione Estiva (Luglio)"
+    if (month == 6) return 1.15 to "Stagione Estiva (Giugno)"
+
+    val isHolidayBridge = (month == 4 && dayOfMonth in 18..26) ||
+            (month == 5 && dayOfMonth in 1..3) ||
+            (month == 6 && dayOfMonth in 1..3) ||
+            (month == 11 && dayOfMonth in 1..2) ||
+            (month == 12 && dayOfMonth in 7..9)
+    if (isHolidayBridge) {
+        return 1.22 to "Tariffa Festività & Ponti"
+    }
+
+    val isWeekend = dayOfWeek == Calendar.FRIDAY || dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY
+    if (isWeekend) {
+        return (1.0 + (weekendMarkupPercent / 100.0)) to "Tariffa Fine Settimana"
+    }
+
+    if (month in listOf(1, 2, 11)) {
+        return 0.92 to "Tariffa Bassa Stagione"
+    }
+
+    return 1.0 to "Tariffa Standard Stagionale"
+}
+
+// Estrae dal DB la Panoramica, le Tappe @@STEP@@ e le Recensioni Reali @@REVIEW@@
+fun parseTripDatabaseContent(trip: TripDTO, isActivity: Boolean): ParsedTripContent {
+    val fullRaw = trip.description ?: ""
+    val loc = trip.location ?: "Destinazione"
+
+    // 1. Separa i blocchi @@REVIEW@@ reali salvati nel DB
+    val reviewSplits = fullRaw.split("@@REVIEW@@")
+    val contentWithoutReviews = reviewSplits.firstOrNull()?.trim().orEmpty()
+    val rawReviewBlocks = if (reviewSplits.size > 1) {
+        reviewSplits.drop(1).joinToString("\n") { "@@REVIEW@@${it.trim()}" }
+    } else ""
+
+    val parsedReviews = reviewSplits.drop(1).mapNotNull { block ->
+        val fields = block.trim().split("||")
+        if (fields.size >= 4) {
+            ExperienceReview(
+                author = fields[0].trim(),
+                rating = fields[1].trim().toIntOrNull()?.coerceIn(1, 5) ?: 5,
+                date = fields[2].trim(),
+                comment = fields[3].trim()
+            )
+        } else null
+    }.reversed() // Mostra le più recenti in alto
+
+    // 2. Separa la panoramica dai blocchi @@STEP@@
+    if (contentWithoutReviews.contains("@@STEP@@")) {
+        val parts = contentWithoutReviews.split("@@STEP@@")
+        val cleanOverview = parts.firstOrNull()?.trim().orEmpty().ifEmpty {
+            "Esperienza ufficiale organizzata a $loc."
+        }
+        val parsedSteps = parts.drop(1).mapIndexedNotNull { index, block ->
+            val fields = block.trim().split("||")
+            if (fields.isEmpty() || fields[0].isBlank()) null
+            else {
+                ItineraryStepItem(
+                    stepNumber = index + 1,
+                    title = fields.getOrNull(0)?.trim().orEmpty(),
+                    duration = fields.getOrNull(1)?.trim().orEmpty().ifEmpty { if (isActivity) "45 min" else "Giorno ${index + 1}" },
+                    ticketInfo = fields.getOrNull(2)?.trim().orEmpty().ifEmpty { "📍 Tappa inclusa" },
+                    description = fields.getOrNull(3)?.trim().orEmpty()
+                )
+            }
+        }
+        if (parsedSteps.isNotEmpty()) {
+            return ParsedTripContent(cleanOverview, parsedSteps, parsedReviews, rawReviewBlocks)
+        }
+    }
+
+    val defaultStep = listOf(
+        ItineraryStepItem(
+            stepNumber = 1,
+            title = if (isActivity) "Incontro e Svolgimento Attività a $loc" else "Partenza e Programma a $loc",
+            duration = if (isActivity) "2 ore" else "${trip.startDate} → ${trip.endDate}",
+            ticketInfo = "🎟️ Esperienza completa inclusa",
+            description = contentWithoutReviews.ifBlank { "Accoglienza partecipanti e svolgimento dell'esperienza a $loc." }
+        )
+    )
+    return ParsedTripContent(
+        overview = contentWithoutReviews.ifBlank { "Esperienza curata a $loc." },
+        steps = defaultStep,
+        reviews = parsedReviews,
+        rawReviewBlocks = rawReviewBlocks
+    )
+}
+
 fun buildMultiDayTripOptions(
+    context: Context,
     trip: TripDTO,
     weekendMarkupPercent: Int,
-    midweekDiscountPercent: Int
+    recomposeTrigger: Int
 ): List<DynamicAvailabilityOption> {
     val basePrice = trip.price
-    val realSpots = trip.availableSpots.coerceAtLeast(0)
+    val baseCapacity = trip.availableSpots.coerceAtLeast(0)
     val sdfInput = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    val sdfDayNum = SimpleDateFormat("dd MMM", Locale.ITALY)
+    val sdfDayNum = SimpleDateFormat("dd MMM yyyy", Locale.ITALY)
+    val datePrefs = context.getSharedPreferences("date_inventory_prefs", Context.MODE_PRIVATE)
+    val todayMidnight = getTodayMidnightCalendar()
 
     val startCal = Calendar.getInstance()
     try {
@@ -99,61 +233,67 @@ fun buildMultiDayTripOptions(
 
     val durationDays = (((endCal.timeInMillis - startCal.timeInMillis) / (1000 * 60 * 60 * 24)).toInt()).coerceAtLeast(2)
 
-    val slot1Start = sdfDayNum.format(startCal.time)
-    val slot1End = sdfDayNum.format(endCal.time)
+    val offsets = listOf(0, 14, 30)
+    return offsets.mapIndexed { idx, dayOffset ->
+        val cStart = (startCal.clone() as Calendar).apply {
+            add(Calendar.DAY_OF_YEAR, dayOffset)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val cEnd = (cStart.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, durationDays) }
+        val isoKey = sdfInput.format(cStart.time)
+        val isPast = cStart.before(todayMidnight)
 
-    val cal2Start = (startCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 7) }
-    val cal2End = (cal2Start.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, durationDays) }
-
-    val cal3Start = (startCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 14) }
-    val cal3End = (cal3Start.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, durationDays) }
-
-    val highSeasonPrice = ((basePrice * (1.0 + weekendMarkupPercent / 100.0))).roundToInt().toDouble()
-    val earlyBirdPrice = ((basePrice * (1.0 - midweekDiscountPercent / 100.0))).roundToInt().toDouble()
-
-    return listOf(
-        DynamicAvailabilityOption(
-            id = 0,
-            title = "1° Turno: $slot1Start → $slot1End",
-            subtitle = "Partenza Principale • Pacchetto Standard ($durationDays giorni)",
-            badge = "Tariffa Ufficiale",
-            pricePerPerson = basePrice,
-            availableSpots = realSpots
-        ),
-        DynamicAvailabilityOption(
-            id = 1,
-            title = "2° Turno: ${sdfDayNum.format(cal2Start.time)} → ${sdfDayNum.format(cal2End.time)}",
-            subtitle = "Partenza Alta Richiesta + Polizza Flex inclusa",
-            badge = "Alta Richiesta (+$weekendMarkupPercent%)",
-            pricePerPerson = highSeasonPrice,
-            availableSpots = realSpots
-        ),
-        DynamicAvailabilityOption(
-            id = 2,
-            title = "3° Turno: ${sdfDayNum.format(cal3Start.time)} → ${sdfDayNum.format(cal3End.time)}",
-            subtitle = "Partenza Smart • Tariffa Early Bird prenotazione anticipata",
-            badge = if (midweekDiscountPercent > 0) "Early Bird (-$midweekDiscountPercent%)" else "Disponibile",
-            pricePerPerson = earlyBirdPrice,
-            availableSpots = realSpots
+        val (seasonMult, seasonLabel) = calculateSeasonalMultiplier(
+            cStart.get(Calendar.MONTH),
+            cStart.get(Calendar.DAY_OF_MONTH),
+            cStart.get(Calendar.DAY_OF_WEEK),
+            weekendMarkupPercent
         )
-    )
+
+        val slotPrice = ((basePrice * seasonMult)).roundToInt().toDouble()
+        val bookedForSlot = datePrefs.getInt("booked_${trip.id}_$isoKey", 0)
+        val initialSlotCap = if (idx == 0) baseCapacity else (baseCapacity - idx).coerceAtLeast(1)
+        val remaining = if (baseCapacity <= 0) 0 else (initialSlotCap - bookedForSlot).coerceAtLeast(0)
+
+        DynamicAvailabilityOption(
+            id = idx,
+            dateIso = isoKey,
+            title = "${idx + 1}° Turno: ${sdfDayNum.format(cStart.time)} → ${sdfDayNum.format(cEnd.time)}",
+            subtitle = "Pacchetto $durationDays giorni • $seasonLabel",
+            seasonLabel = seasonLabel,
+            pricePerPerson = slotPrice,
+            availableSpots = remaining,
+            isPastDate = isPast
+        )
+    }
 }
 
-// Genera la griglia del mese per il vero Calendario delle Attività con prezzi dinamici
 fun buildMonthCalendarDays(
+    context: Context,
+    tripId: Long,
+    dailyBaseCapacity: Int,
     year: Int,
     month: Int,
     basePrice: Double,
     weekendMarkupPercent: Int,
-    midweekDiscountPercent: Int
+    recomposeTrigger: Int
 ): Pair<Int, List<CalendarDayPrice>> {
+    val datePrefs = context.getSharedPreferences("date_inventory_prefs", Context.MODE_PRIVATE)
+    val todayMidnight = getTodayMidnightCalendar()
+
     val cal = Calendar.getInstance().apply {
         set(Calendar.YEAR, year)
         set(Calendar.MONTH, month)
         set(Calendar.DAY_OF_MONTH, 1)
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
     }
 
-    // Calcola l'offset del primo giorno della settimana (Lunedì = 0 ... Domenica = 6)
     val firstDayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
     val emptyLeadingCells = if (firstDayOfWeek == Calendar.SUNDAY) 6 else firstDayOfWeek - Calendar.MONDAY
 
@@ -164,31 +304,35 @@ fun buildMonthCalendarDays(
     val days = (1..maxDays).map { day ->
         cal.set(Calendar.DAY_OF_MONTH, day)
         val dow = cal.get(Calendar.DAY_OF_WEEK)
-        val isWeekend = dow == Calendar.FRIDAY || dow == Calendar.SATURDAY || dow == Calendar.SUNDAY
-        val isPromo = dow == Calendar.TUESDAY || dow == Calendar.WEDNESDAY
+        val dateIso = sdfIso.format(cal.time)
+        val isPastDate = cal.before(todayMidnight)
 
-        val multiplier = when {
-            isWeekend -> 1.0 + (weekendMarkupPercent / 100.0)
-            isPromo -> 1.0 - (midweekDiscountPercent / 100.0)
-            else -> 1.0
-        }
+        val (multiplier, seasonNote) = calculateSeasonalMultiplier(month, day, dow, weekendMarkupPercent)
         val computedPrice = ((basePrice * multiplier) * 10.0).roundToInt() / 10.0
+
+        val customCapForDate = datePrefs.getInt("custom_cap_${tripId}_$dateIso", -1)
+        val initialDaySpots = if (customCapForDate >= 0) {
+            customCapForDate
+        } else {
+            val base = dailyBaseCapacity.coerceAtLeast(2)
+            when {
+                day % 9 == 0 -> 0
+                day % 5 == 0 -> 1
+                else -> (base - ((day + month) % 2)).coerceAtLeast(1)
+            }
+        }
+        val bookedOnThisDate = datePrefs.getInt("booked_${tripId}_$dateIso", 0)
+        val remainingSpotsForDay = (initialDaySpots - bookedOnThisDate).coerceAtLeast(0)
 
         CalendarDayPrice(
             dayOfMonth = day,
-            dateIso = sdfIso.format(cal.time),
+            dateIso = dateIso,
             formattedLabel = sdfLabel.format(cal.time).replaceFirstChar { it.uppercase() },
             price = computedPrice,
-            tier = when {
-                isWeekend -> "WEEKEND"
-                isPromo -> "PROMO"
-                else -> "BASE"
-            },
-            badgeText = when {
-                isWeekend -> "Tariffa Weekend (+$weekendMarkupPercent%)"
-                isPromo && midweekDiscountPercent > 0 -> "Tariffa Infrasettimanale (-$midweekDiscountPercent%)"
-                else -> "Tariffa Standard"
-            }
+            availableSpotsForDay = remainingSpotsForDay,
+            isHighDemandOrHoliday = multiplier > 1.12,
+            seasonNote = seasonNote,
+            isPastDate = isPastDate
         )
     }
     return emptyLeadingCells to days
@@ -209,59 +353,34 @@ fun TripDetailScreen(
     var reviewsSectionY by remember { mutableStateOf(0) }
 
     var currentTripId by remember { mutableStateOf(tripId) }
+    var inventoryRefreshTrigger by remember { mutableStateOf(0) }
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
-    var showDynamicPricingDialog by remember { mutableStateOf(false) }
     var showMockPaymentSheet by remember { mutableStateOf(false) }
     var showAddReviewDialog by remember { mutableStateOf(false) }
+    var showContactAgencySheet by remember { mutableStateOf(false) }
+    var contactSuccessMessage by remember { mutableStateOf<String?>(null) }
     var isFavorite by remember { mutableStateOf(false) }
 
-    // Stato per visualizzazione foto ingrandite a tutto schermo (Lightbox)
     var fullscreenImageIndex by remember { mutableStateOf<Int?>(null) }
-
-    // Se l'utente ha già prenotato, nascondiamo il tasto Prenota Ora a meno che non clicchi su "Prenota di nuovo"
     var wantToBookAgain by remember(currentTripId) { mutableStateOf(false) }
+    var expandAllSteps by remember(currentTripId) { mutableStateOf(true) }
 
     var spotsToBook by remember { mutableStateOf(1) }
     var selectedOptionIndex by remember { mutableStateOf(0) }
 
     val pricingPrefs = remember { context.getSharedPreferences("dynamic_pricing_prefs", Context.MODE_PRIVATE) }
-    var weekendMarkupPercent by remember(currentTripId) {
-        mutableStateOf(pricingPrefs.getInt("markup_$currentTripId", 20))
-    }
-    var midweekDiscountPercent by remember(currentTripId) {
-        mutableStateOf(pricingPrefs.getInt("discount_$currentTripId", 15))
+    val weekendMarkupPercent = remember(currentTripId) {
+        pricingPrefs.getInt("markup_$currentTripId", 15)
     }
 
     var editTitle by remember { mutableStateOf("") }
-    var editDescription by remember { mutableStateOf("") }
+    var editOverview by remember { mutableStateOf("") }
     var editPrice by remember { mutableStateOf("") }
     var editLocation by remember { mutableStateOf("") }
     var editAvailableSpots by remember { mutableStateOf("") }
-
-    val reviews = remember(currentTripId) {
-        mutableStateListOf(
-            ExperienceReview(
-                author = "Giulia M.",
-                rating = 5,
-                date = "Ottobre 2026",
-                comment = "Esperienza impeccabile! Organizzazione puntuale, guida preparatissima e ottimo rapporto qualità/prezzo. Consigliatissimo!"
-            ),
-            ExperienceReview(
-                author = "Alessandro R.",
-                rating = 5,
-                date = "Settembre 2026",
-                comment = "Prenotato insieme ai miei amici tramite una lista condivisa su Horizon. Tutto corrispondeva alla descrizione."
-            ),
-            ExperienceReview(
-                author = "Elena V.",
-                rating = 4,
-                date = "Agosto 2026",
-                comment = "Molto bello e ben strutturato, comodissima anche l'esportazione delle date nel calendario del telefono."
-            )
-        )
-    }
+    val editStepsList = remember { mutableStateListOf<EditableStepDraft>() }
 
     LaunchedEffect(currentTripId) {
         selectedOptionIndex = 0
@@ -276,8 +395,26 @@ fun TripDetailScreen(
 
     val trip = viewModel.trip
     val isActivity = trip?.let { isActivityOrExcursion(it) } ?: false
+    val isOrganizerRole = ruoloUtente == "ORGANIZZATORE"
+    val accentColor = if (isActivity) TripOrangeActivity else TripGreen
 
-    // Stato del Calendario Mensile per le Attività
+    // Legge dal DB la panoramica, le tappe e le VERE recensioni salvate nel database
+    val parsedContent = remember(trip, isActivity) {
+        if (trip != null) parseTripDatabaseContent(trip, isActivity)
+        else ParsedTripContent("", emptyList(), emptyList(), "")
+    }
+    val cleanOverviewText = parsedContent.overview
+    val itinerarySteps = parsedContent.steps
+    val dbReviews = parsedContent.reviews
+
+    // Media e conteggio recensioni provengono direttamente dal database (e coincidono con dbReviews)
+    val realReviewCount = trip?.reviewCount ?: dbReviews.size
+    val realAverageRating = trip?.averageRating ?: 0.0
+
+    val todayCal = remember {getTodayMidnightCalendar() }
+    val todayYear = todayCal.get(Calendar.YEAR)
+    val todayMonth = todayCal.get(Calendar.MONTH)
+
     val initialCal = remember(trip) {
         val c = Calendar.getInstance()
         try {
@@ -285,32 +422,106 @@ fun TripDetailScreen(
                 SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(trip!!.startDate)?.let { c.time = it }
             }
         } catch (_: Exception) {}
-        c
+
+        if (c.before(todayCal)) {
+            todayCal.clone() as Calendar
+        } else {
+            c
+        }
     }
     var calendarYear by remember(trip) { mutableStateOf(initialCal.get(Calendar.YEAR)) }
     var calendarMonth by remember(trip) { mutableStateOf(initialCal.get(Calendar.MONTH)) }
     var selectedCalendarDay by remember(trip) { mutableStateOf(initialCal.get(Calendar.DAY_OF_MONTH)) }
 
-    val (leadingEmptyCells, monthDays) = remember(trip, calendarYear, calendarMonth, weekendMarkupPercent, midweekDiscountPercent) {
+    val (leadingEmptyCells, monthDays) = remember(
+        trip,
+        calendarYear,
+        calendarMonth,
+        weekendMarkupPercent,
+        inventoryRefreshTrigger
+    ) {
         if (trip != null) {
-            buildMonthCalendarDays(calendarYear, calendarMonth, trip.price, weekendMarkupPercent, midweekDiscountPercent)
+            buildMonthCalendarDays(
+                context = context,
+                tripId = trip.id,
+                dailyBaseCapacity = trip.availableSpots,
+                year = calendarYear,
+                month = calendarMonth,
+                basePrice = trip.price,
+                weekendMarkupPercent = weekendMarkupPercent,
+                recomposeTrigger = inventoryRefreshTrigger
+            )
         } else 0 to emptyList()
     }
 
-    val selectedDayObj = monthDays.find { it.dayOfMonth == selectedCalendarDay } ?: monthDays.firstOrNull()
+    LaunchedEffect(spotsToBook, monthDays, isOrganizerRole) {
+        if (isActivity && monthDays.isNotEmpty()) {
+            val currentDayObj = monthDays.find { it.dayOfMonth == selectedCalendarDay }
+            val isCurrentValid = if (isOrganizerRole) {
+                currentDayObj != null && !currentDayObj.isPastDate
+            } else {
+                currentDayObj != null && !currentDayObj.isPastDate && currentDayObj.availableSpotsForDay >= spotsToBook && currentDayObj.availableSpotsForDay > 0
+            }
 
-    // Opzioni Turno per i Viaggi di più giorni
-    val multiDayOptions = remember(trip, weekendMarkupPercent, midweekDiscountPercent) {
-        if (trip != null) buildMultiDayTripOptions(trip, weekendMarkupPercent, midweekDiscountPercent)
+            if (!isCurrentValid) {
+                val firstValidDay = if (isOrganizerRole) {
+                    monthDays.firstOrNull { !it.isPastDate }
+                } else {
+                    monthDays.firstOrNull { !it.isPastDate && it.availableSpotsForDay >= spotsToBook && it.availableSpotsForDay > 0 }
+                }
+                if (firstValidDay != null) {
+                    selectedCalendarDay = firstValidDay.dayOfMonth
+                }
+            }
+        }
+    }
+
+    val selectedDayObj = monthDays.find { it.dayOfMonth == selectedCalendarDay } ?: monthDays.firstOrNull { !it.isPastDate}
+
+    val multiDayOptions = remember(trip, weekendMarkupPercent, inventoryRefreshTrigger) {
+        if (trip != null) buildMultiDayTripOptions(context, trip, weekendMarkupPercent, inventoryRefreshTrigger)
         else emptyList()
     }
+
+    LaunchedEffect(spotsToBook, multiDayOptions, isOrganizerRole) {
+        if (!isActivity && multiDayOptions.isNotEmpty()) {
+            val currentOpt = multiDayOptions.getOrNull(selectedOptionIndex)
+            val isCurrentValid = if (isOrganizerRole) {
+                currentOpt != null && !currentOpt.isPastDate
+            } else {
+                currentOpt != null && !currentOpt.isPastDate && currentOpt.availableSpots >= spotsToBook && currentOpt.availableSpots > 0
+            }
+            if (!isCurrentValid) {
+                val firstValidIndex = if (isOrganizerRole) {
+                    multiDayOptions.indexOfFirst { !it.isPastDate }
+                } else {
+                    multiDayOptions.indexOfFirst { !it.isPastDate && it.availableSpots >= spotsToBook && it.availableSpots > 0 }
+                }
+                if (firstValidIndex >= 0) {
+                    selectedOptionIndex = firstValidIndex
+                }
+            }
+        }
+    }
+
     val selectedMultiDayOption = multiDayOptions.getOrNull(selectedOptionIndex) ?: multiDayOptions.firstOrNull()
 
-    // Prezzo unitario, etichetta e posti reali attualmente selezionati
+    val maxSelectableSpotsInView = if (isActivity) {
+        monthDays.maxOfOrNull { it.availableSpotsForDay }?.coerceAtLeast(1) ?: 1
+    } else {
+        multiDayOptions.maxOfOrNull { it.availableSpots }?.coerceAtLeast( 1) ?: 1
+    }
+
     val currentUnitPrice = if (isActivity) {
         selectedDayObj?.price ?: (trip?.price ?: 0.0)
     } else {
         selectedMultiDayOption?.pricePerPerson ?: (trip?.price ?: 0.0)
+    }
+
+    val currentSelectedDateIso = if (isActivity) {
+        selectedDayObj?.dateIso ?: (trip?.startDate ?: "")
+    } else {
+        selectedMultiDayOption?.dateIso ?: (trip?.startDate ?: "")
     }
 
     val currentSelectedLabel = if (isActivity) {
@@ -320,12 +531,32 @@ fun TripDetailScreen(
     }
 
     val currentSelectedBadge = if (isActivity) {
-        selectedDayObj?.badgeText ?: "Tariffa Giornaliera"
+        selectedDayObj?.seasonNote ?: "Tariffa Giornaliera"
     } else {
-        selectedMultiDayOption?.badge ?: "Tariffa Standard"
+        selectedMultiDayOption?.seasonLabel ?: "Tariffa Standard"
     }
 
-    val currentAvailableSpots = trip?.availableSpots?.coerceAtLeast(0) ?: 0
+    val currentAvailableSpots = if (isActivity) {
+        selectedDayObj?.availableSpotsForDay ?: 0
+    } else {
+        selectedMultiDayOption?.availableSpots ?: 0
+    }
+
+    val isCurrentSelectionNotPast = if (isActivity) {
+        selectedDayObj?.isPastDate == false
+    } else {
+        selectedMultiDayOption?.isPastDate == false
+    }
+
+    // Stato per la modifica rapida dei posti della data selezionata da parte dell'Agenzia
+    var agencyEditedSpotsForDate by remember(currentSelectedDateIso, currentAvailableSpots) {
+        mutableStateOf(currentAvailableSpots)
+    }
+
+    var agencySpotsSavedFeedback by remember(currentSelectedDateIso) { mutableStateOf(false) }
+
+    val isCurrentSelectionBookable = currentAvailableSpots >= spotsToBook && currentAvailableSpots > 0
+
     val alreadyBookedReservations = viewModel.userReservationsForThisTrip
     val hasAlreadyBooked = alreadyBookedReservations.isNotEmpty()
     val totalAlreadyBookedSpots = alreadyBookedReservations.sumOf { it.bookedSpots }
@@ -333,14 +564,174 @@ fun TripDetailScreen(
     LaunchedEffect(trip, showEditDialog) {
         if (trip != null && showEditDialog) {
             editTitle = trip.title
-            editDescription = trip.description ?: ""
+            editOverview = cleanOverviewText
             editPrice = trip.price.toString()
             editLocation = trip.location ?: ""
             editAvailableSpots = trip.availableSpots.toString()
+            editStepsList.clear()
+            itinerarySteps.forEach { s ->
+                editStepsList.add(
+                    EditableStepDraft(
+                        title = s.title,
+                        duration = s.duration,
+                        ticketInfo = s.ticketInfo,
+                        description = s.description
+                    )
+                )
+            }
         }
     }
 
-    // --- GALLERIA IMMAGINI A TUTTO SCHERMO (LIGHTBOX ZOOMABILE) ---
+    // --- BOTTOM SHEET: CONTATTA L'AGENZIA ORGANIZZATRICE ---
+    if (showContactAgencySheet && trip != null) {
+        val agencyName = trip.organizerName ?: "Agenzia Partner Horizon"
+        var inquirySubject by remember { mutableStateOf("Informazioni su: ${trip.title}") }
+        var inquiryMessage by remember { mutableStateOf("") }
+        var selectedTopic by remember { mutableStateOf("Info Date & Orari") }
+
+        ModalBottomSheet(
+            onDismissRequest = { showContactAgencySheet = false },
+            containerColor = Color.White
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(TripGreen.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Email, contentDescription = null, tint = TripGreen)
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "ASSISTENZA DIRETTA TOUR OPERATOR",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TripGreen
+                        )
+                        Text(
+                            text = "Contatta $agencyName",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TripBlack
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Hai domande sulle tappe del programma, esigenze alimentari o vuoi informazioni per un gruppo? Scrivi direttamente all'organizzatore:",
+                    fontSize = 13.sp,
+                    color = Color.DarkGray
+                )
+
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val topics = listOf("Info Date & Orari", "Tappe del Programma", "Gruppi / Famiglie", "Punto d'incontro")
+                    items(topics) { t ->
+                        OfferTypeChip(t, selectedTopic == t) { selectedTopic = t }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = inquirySubject,
+                    onValueChange = { inquirySubject = it },
+                    label = { Text("Oggetto della richiesta") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = inquiryMessage,
+                    onValueChange = { inquiryMessage = it },
+                    label = { Text("Il tuo messaggio per $agencyName") },
+                    placeholder = { Text("Scrivi qui la tua domanda per la data $currentSelectedLabel...") },
+                    minLines = 4,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:+39065544332"))
+                            context.startActivity(dialIntent)
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Phone, contentDescription = null, tint = TripGreen, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Chiama Agenzia", color = TripBlack, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            val mailIntent = Intent(Intent.ACTION_SENDTO).apply {
+                                data = Uri.parse("mailto:agenzia@horizon.it")
+                                putExtra(Intent.EXTRA_SUBJECT, "$selectedTopic - ${trip.title}")
+                                putExtra(Intent.EXTRA_TEXT, inquiryMessage)
+                            }
+                            context.startActivity(Intent.createChooser(mailIntent, "Invia email"))
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Email, contentDescription = null, tint = TripGreen, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("App Email", color = TripBlack, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        showContactAgencySheet = false
+                        contactSuccessMessage = "Il tuo messaggio su \"$selectedTopic\" è stato inviato a $agencyName! Riceverai riscontro al tuo indirizzo email (${viewModel.currentUserEmail.ifBlank { "account registrato" }})."
+                    },
+                    enabled = inquiryMessage.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = TripGreen),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                ) {
+                    Icon(Icons.Default.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Invia Richiesta all'Agenzia", fontWeight = FontWeight.ExtraBold, color = Color.White, fontSize = 15.sp)
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
+
+    if (contactSuccessMessage != null) {
+        AlertDialog(
+            onDismissRequest = { contactSuccessMessage = null },
+            containerColor = Color.White,
+            title = { Text("Richiesta Inviata!", fontWeight = FontWeight.ExtraBold, color = TripDarkGreen) },
+            text = { Text(contactSuccessMessage!!, color = TripBlack) },
+            confirmButton = {
+                Button(
+                    onClick = { contactSuccessMessage = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = TripGreen)
+                ) { Text("Perfetto", color = Color.White, fontWeight = FontWeight.Bold) }
+            }
+        )
+    }
+
+    // --- GALLERIA IMMAGINI A TUTTO SCHERMO (LIGHTBOX) ---
     if (fullscreenImageIndex != null && trip != null) {
         val rawImages = trip.imageUrls?.map { it.replace("localhost", "10.0.2.2") } ?: emptyList()
         val images = if (rawImages.isNotEmpty()) rawImages else listOf(resolveTripImageUrl(trip))
@@ -376,7 +767,6 @@ fun TripDetailScreen(
                     }
                 }
 
-                // Header del Lightbox con contatore e tasto Chiudi
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -408,138 +798,24 @@ fun TripDetailScreen(
                         Icon(Icons.Default.Close, contentDescription = "Chiudi", tint = TripBlack)
                     }
                 }
-
-                Text(
-                    text = "Scorri a destra o sinistra per sfogliare tutte le foto",
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 12.sp,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 32.dp)
-                )
             }
         }
     }
 
-    // --- POPUP AGENZIA: CONFIGURA PREZZI DINAMICI PER GIORNO / TURNO ---
-    if (showDynamicPricingDialog && trip != null) {
-        var tempBasePrice by remember(trip) { mutableStateOf(trip.price.toString()) }
-        var tempSpots by remember(trip) { mutableStateOf(trip.availableSpots.toString()) }
-        var tempMarkup by remember { mutableStateOf(weekendMarkupPercent.toFloat()) }
-        var tempDiscount by remember { mutableStateOf(midweekDiscountPercent.toFloat()) }
-
-        AlertDialog(
-            onDismissRequest = { showDynamicPricingDialog = false },
-            containerColor = Color.White,
-            title = {
-                Text(
-                    text = if (isActivity) "Calendario & Prezzi Giornalieri" else "Gestione Turni & Tariffe Viaggio",
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TripBlack
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = if (isActivity)
-                            "Imposta il prezzo base giornaliero e le variazioni automatiche sul calendario per Weekend (Ven-Dom) e giorni Infrasettimanali (Mar-Mer):"
-                        else
-                            "Configura la tariffa base del pacchetto e le variazioni per i turni di Alta Richiesta o Early Bird:",
-                        fontSize = 13.sp,
-                        color = Color.DarkGray
-                    )
-
-                    OutlinedTextField(
-                        value = tempBasePrice,
-                        onValueChange = { tempBasePrice = it },
-                        label = { Text("Prezzo Base (€ / persona)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = tempSpots,
-                        onValueChange = { tempSpots = it },
-                        label = { Text("Posti Totali Disponibili") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Text(
-                        text = if (isActivity) "Maggiorazione Weekend (Ven-Sab-Dom): +${tempMarkup.roundToInt()}%"
-                        else "Supplemento Turno Alta Richiesta: +${tempMarkup.roundToInt()}%",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = TripOrangeActivity
-                    )
-                    Slider(
-                        value = tempMarkup,
-                        onValueChange = { tempMarkup = it },
-                        valueRange = 0f..50f,
-                        colors = SliderDefaults.colors(thumbColor = TripOrangeActivity, activeTrackColor = TripOrangeActivity)
-                    )
-
-                    Text(
-                        text = if (isActivity) "Sconto Infrasettimanale (Mar-Mer): -${tempDiscount.roundToInt()}%"
-                        else "Sconto Turno Early Bird: -${tempDiscount.roundToInt()}%",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = TripGreen
-                    )
-                    Slider(
-                        value = tempDiscount,
-                        onValueChange = { tempDiscount = it },
-                        valueRange = 0f..40f,
-                        colors = SliderDefaults.colors(thumbColor = TripGreen, activeTrackColor = TripGreen)
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        weekendMarkupPercent = tempMarkup.roundToInt()
-                        midweekDiscountPercent = tempDiscount.roundToInt()
-                        pricingPrefs.edit()
-                            .putInt("markup_$currentTripId", weekendMarkupPercent)
-                            .putInt("discount_$currentTripId", midweekDiscountPercent)
-                            .apply()
-
-                        val request = TripRequest(
-                            title = trip.title,
-                            description = trip.description ?: "",
-                            price = tempBasePrice.toDoubleOrNull() ?: trip.price,
-                            startDate = trip.startDate,
-                            endDate = trip.endDate,
-                            availableSpots = tempSpots.toIntOrNull() ?: trip.availableSpots,
-                            location = trip.location ?: "",
-                            imageUrls = trip.imageUrls
-                        )
-                        viewModel.updateTrip(tokenUtente, currentTripId, request)
-                        showDynamicPricingDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = TripGreen)
-                ) {
-                    Text("Salva Listino", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDynamicPricingDialog = false }) { Text("Annulla") }
-            }
-        )
-    }
-
-    // --- BOTTOM SHEET: SIMULAZIONE METODO DI PAGAMENTO APPROFONDITA ---
+    // --- BOTTOM SHEET: CHECKOUT E PAGAMENTO ---
     if (showMockPaymentSheet && trip != null) {
         var selectedPaymentMethod by remember { mutableStateOf("CARD") }
         var cardNumber by remember { mutableStateOf("4532 8910 3412 8890") }
-        var cardHolder by remember { mutableStateOf("Mario Rossi") }
+        var cardHolder by remember { mutableStateOf(viewModel.currentUserName) }
         var cardExpiry by remember { mutableStateOf("08/29") }
         var cardCvv by remember { mutableStateOf("482") }
         val totalAmount = currentUnitPrice * spotsToBook
+
+        val paymentLabelForReceipt = when (selectedPaymentMethod) {
+            "CARD" -> "Carta Visa/Mastercard (•••• ${cardNumber.takeLast(4)})"
+            "PAYPAL" -> "PayPal Express Verificato"
+            else -> "Google Pay Wallet"
+        }
 
         ModalBottomSheet(
             onDismissRequest = { showMockPaymentSheet = false },
@@ -575,7 +851,6 @@ fun TripDetailScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Riepilogo dettagliato dell'ordine
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     color = TripWarmBg,
@@ -588,7 +863,7 @@ fun TripDetailScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Data / Turno selezionato:", fontSize = 12.sp, color = Color.Gray)
+                            Text("Data selezionata:", fontSize = 12.sp, color = Color.Gray)
                             Text(currentSelectedLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TripBlack)
                         }
                         Spacer(modifier = Modifier.height(4.dp))
@@ -596,7 +871,7 @@ fun TripDetailScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Fascia tariffaria:", fontSize = 12.sp, color = Color.Gray)
+                            Text("Periodo tariffario:", fontSize = 12.sp, color = Color.Gray)
                             Text(currentSelectedBadge, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TripGreen)
                         }
                         Spacer(modifier = Modifier.height(4.dp))
@@ -613,7 +888,7 @@ fun TripDetailScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Totale da autorizzare", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = TripBlack)
+                            Text("Totale Operazione", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = TripBlack)
                             Text(
                                 text = "€${String.format(Locale.ITALY, "%.2f", totalAmount)}",
                                 fontWeight = FontWeight.ExtraBold,
@@ -707,10 +982,15 @@ fun TripDetailScreen(
                         showMockPaymentSheet = false
                         wantToBookAgain = false
                         viewModel.bookTrip(
+                            context = context,
                             token = tokenUtente,
                             tripId = currentTripId,
                             spots = spotsToBook,
-                            selectedSlotLabel = currentSelectedLabel
+                            selectedDateIso = currentSelectedDateIso,
+                            selectedSlotLabel = currentSelectedLabel,
+                            paymentMethodLabel = paymentLabelForReceipt,
+                            unitPricePaid = currentUnitPrice,
+                            onDateBookedSuccess = { inventoryRefreshTrigger++ }
                         )
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = TripGreen),
@@ -733,7 +1013,7 @@ fun TripDetailScreen(
         }
     }
 
-    // --- POPUP: SCRIVI UNA RECENSIONE ---
+    // --- POPUP: SCRIVI UNA RECENSIONE (SALVATA REALMENTE NEL DATABASE) ---
     if (showAddReviewDialog) {
         var newRating by remember { mutableStateOf(5) }
         var newComment by remember { mutableStateOf("") }
@@ -772,14 +1052,11 @@ fun TripDetailScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        reviews.add(
-                            0,
-                            ExperienceReview(
-                                author = "Tu (Viaggiatore Verificato)",
-                                rating = newRating,
-                                date = "Oggi",
-                                comment = newComment.trim()
-                            )
+                        viewModel.submitReview(
+                            token = tokenUtente,
+                            tripId = currentTripId,
+                            rating = newRating,
+                            comment = newComment.trim()
                         )
                         showAddReviewDialog = false
                     },
@@ -816,57 +1093,172 @@ fun TripDetailScreen(
         )
     }
 
-    // --- POPUP: MODIFICA PACCHETTO ---
+    // --- BOTTOM SHEET AGENZIA: MODIFICA ANNUNCIO E TAPPE (MANTIENE INTATTE LE RECENSIONI NEL DB) ---
     if (showEditDialog && trip != null) {
-        AlertDialog(
+        ModalBottomSheet(
             onDismissRequest = { showEditDialog = false },
-            title = { Text("Modifica Annuncio", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = editTitle,
-                        onValueChange = { editTitle = it },
-                        label = { Text("Titolo") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = editLocation,
-                        onValueChange = { editLocation = it },
-                        label = { Text("Località") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+            containerColor = Color.White
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Modifica Annuncio e Tappe",
+                    fontSize = 21.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TripBlack
+                )
+
+                OutlinedTextField(
+                    value = editTitle,
+                    onValueChange = { editTitle = it },
+                    label = { Text("Titolo") },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = editLocation,
+                    onValueChange = { editLocation = it },
+                    label = { Text("Località") },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
                         value = editPrice,
                         onValueChange = { editPrice = it },
                         label = { Text("Prezzo Base (€)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
                         value = editAvailableSpots,
                         onValueChange = { editAvailableSpots = it },
-                        label = { Text("Posti Disponibili") },
+                        label = { Text("Posti Base") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = editDescription,
-                        onValueChange = { editDescription = it },
-                        label = { Text("Descrizione") },
-                        modifier = Modifier.fillMaxWidth().height(100.dp),
-                        maxLines = 4
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
                     )
                 }
-            },
-            confirmButton = {
+                OutlinedTextField(
+                    value = editOverview,
+                    onValueChange = { editOverview = it },
+                    label = { Text("Panoramica Generale") },
+                    minLines = 2,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
+                Text(
+                    text = "Tappe Step-by-Step dell'Esperienza",
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 16.sp,
+                    color = TripBlack
+                )
+
+                editStepsList.forEachIndexed { idx, stepDraft ->
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = TripWarmBg,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Tappa #${idx + 1}",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 14.sp,
+                                    color = accentColor
+                                )
+                                if (editStepsList.size > 1) {
+                                    IconButton(
+                                        onClick = { editStepsList.removeAt(idx) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+                            OutlinedTextField(
+                                value = stepDraft.title,
+                                onValueChange = { editStepsList[idx] = stepDraft.copy(title = it) },
+                                label = { Text("Titolo Tappa") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = stepDraft.duration,
+                                    onValueChange = { editStepsList[idx] = stepDraft.copy(duration = it) },
+                                    label = { Text("Durata") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(0.45f)
+                                )
+                                OutlinedTextField(
+                                    value = stepDraft.ticketInfo,
+                                    onValueChange = { editStepsList[idx] = stepDraft.copy(ticketInfo = it) },
+                                    label = { Text("Inclusione") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(0.55f)
+                                )
+                            }
+                            OutlinedTextField(
+                                value = stepDraft.description,
+                                onValueChange = { editStepsList[idx] = stepDraft.copy(description = it) },
+                                label = { Text("Descrizione della tappa") },
+                                minLines = 2,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        editStepsList.add(
+                            EditableStepDraft(
+                                title = "",
+                                duration = if (isActivity) "45 min" else "Giorno ${editStepsList.size + 1}",
+                                ticketInfo = "📍 Tappa inclusa",
+                                description = ""
+                            )
+                        )
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = accentColor)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Aggiungi Tappa", color = accentColor, fontWeight = FontWeight.Bold)
+                }
+
                 Button(
                     onClick = {
+                        val encodedSteps = encodeOverviewAndSteps(editOverview, editStepsList, isActivity)
+                        val finalDescriptionWithReviews = if (parsedContent.rawReviewBlocks.isNotBlank()) {
+                            "$encodedSteps\n${parsedContent.rawReviewBlocks}"
+                        } else encodedSteps
+
                         val request = TripRequest(
                             title = editTitle,
-                            description = editDescription,
+                            description = finalDescriptionWithReviews,
                             price = editPrice.toDoubleOrNull() ?: trip.price,
                             startDate = trip.startDate,
                             endDate = trip.endDate,
@@ -878,15 +1270,15 @@ fun TripDetailScreen(
                         showEditDialog = false
                     },
                     enabled = !viewModel.isUpdating,
-                    colors = ButtonDefaults.buttonColors(containerColor = TripGreen)
+                    colors = ButtonDefaults.buttonColors(containerColor = TripGreen),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
                 ) {
-                    Text("Salva Modifiche", color = Color.White)
+                    Text("Salva Modifiche e Programma", color = Color.White, fontWeight = FontWeight.ExtraBold)
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEditDialog = false }) { Text("Annulla") }
+                Spacer(modifier = Modifier.height(24.dp))
             }
-        )
+        }
     }
 
     if (viewModel.updateMessage != null) {
@@ -1056,28 +1448,17 @@ fun TripDetailScreen(
                                     fontWeight = FontWeight.ExtraBold,
                                     color = TripBlack
                                 )
-                                Text("${trip.availableSpots} posti residui", fontSize = 11.sp, color = TripGreen, fontWeight = FontWeight.Bold)
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Button(
-                                    onClick = { showDynamicPricingDialog = true },
+                                    onClick = { showEditDialog = true },
                                     colors = ButtonDefaults.buttonColors(containerColor = TripGreen),
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.height(50.dp)
                                 ) {
-                                    Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Listino & Posti", fontWeight = FontWeight.Bold)
-                                }
-
-                                IconButton(
-                                    onClick = { showEditDialog = true },
-                                    modifier = Modifier
-                                        .size(50.dp)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(TripWarmBg)
-                                ) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Modifica", tint = TripBlack)
+                                    Text("Modifica Annuncio", fontWeight = FontWeight.Bold)
                                 }
 
                                 IconButton(
@@ -1092,7 +1473,6 @@ fun TripDetailScreen(
                             }
                         }
                     } else if (hasAlreadyBooked && !wantToBookAgain) {
-                        // STATO GIÀ PRENOTATO: Non mostra "Prenota Ora", ma segnala la prenotazione attiva e permette di prenotare di nuovo se voluto
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1151,7 +1531,7 @@ fun TripDetailScreen(
                                     shape = RoundedCornerShape(10.dp)
                                 ) {
                                     Text(
-                                        text = "Posti Esauriti",
+                                        text = "Data Esaurita",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.Gray,
@@ -1161,7 +1541,6 @@ fun TripDetailScreen(
                             }
                         }
                     } else {
-                        // STATO NON ANCORA PRENOTATO (OPPURE L'UTENTE HA PREMUTO "PRENOTA DI NUOVO")
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1169,11 +1548,11 @@ fun TripDetailScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = currentSelectedBadge,
+                                    text = if (isCurrentSelectionBookable) "Data: $currentSelectedDateIso" else "Non disponibile per $spotsToBook pers.",
                                     fontSize = 11.sp,
-                                    color = TripGreen,
+                                    color = if (isCurrentSelectionBookable) TripGreen else MaterialTheme.colorScheme.error,
                                     fontWeight = FontWeight.ExtraBold
                                 )
                                 val total = currentUnitPrice * spotsToBook
@@ -1201,7 +1580,7 @@ fun TripDetailScreen(
                                         Text("-", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
                                     }
                                     Text("$spotsToBook", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = TripBlack)
-                                    IconButton(onClick = { if (spotsToBook < currentAvailableSpots.coerceAtLeast(1)) spotsToBook++ }) {
+                                    IconButton(onClick = { if (spotsToBook < maxSelectableSpotsInView) spotsToBook++ }) {
                                         Text("+", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TripGreen)
                                     }
                                 }
@@ -1213,10 +1592,10 @@ fun TripDetailScreen(
                                     colors = ButtonDefaults.buttonColors(containerColor = TripGreen),
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.height(52.dp),
-                                    enabled = !viewModel.isBooking && currentAvailableSpots > 0
+                                    enabled = !viewModel.isBooking && isCurrentSelectionBookable
                                 ) {
                                     Text(
-                                        text = if (currentAvailableSpots > 0) "Prenota Ora" else "Esaurito",
+                                        text = if (isCurrentSelectionBookable) "Prenota Ora" else "Non disp.",
                                         fontWeight = FontWeight.ExtraBold,
                                         fontSize = 15.sp,
                                         color = Color.White
@@ -1282,7 +1661,7 @@ fun TripDetailScreen(
                         )
 
                         Surface(
-                            color = if (isActivity) TripOrangeActivity else TripGreen,
+                            color = accentColor,
                             shape = RoundedCornerShape(50),
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
@@ -1336,17 +1715,17 @@ fun TripDetailScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.LocationOn, contentDescription = null, tint = TripGreen, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.LocationOn, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     trip.location ?: "Destinazione",
-                                    color = TripGreen,
+                                    color = accentColor,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 14.sp
                                 )
                             }
 
-                            // NUMERO DI RECENSIONI CLICCABILE -> SCORRE ALLA SEZIONE RECENSIONI
+                            // MEDIA E CONTEGGIO REALI SINCRONIZZATI CON IL DB E CON LA HOME
                             Surface(
                                 shape = RoundedCornerShape(50),
                                 color = TripWarmBg,
@@ -1362,13 +1741,27 @@ fun TripDetailScreen(
                                 ) {
                                     Icon(Icons.Default.Star, contentDescription = null, tint = TripAmber, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text(text = "${trip.averageRating}", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = TripBlack)
-                                    Text(
-                                        text = " (${reviews.size + trip.reviewCount} recensioni ↓)",
-                                        color = TripGreen,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
-                                    )
+                                    if (realReviewCount > 0) {
+                                        Text(
+                                            text = String.format(Locale.US, "%.1f", realAverageRating),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 14.sp,
+                                            color = TripBlack
+                                        )
+                                        Text(
+                                            text = " ($realReviewCount recensioni ↓)",
+                                            color = TripGreen,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    } else {
+                                        Text(
+                                            text = "Nuovo (0 recensioni ↓)",
+                                            color = TripGreen,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1382,7 +1775,6 @@ fun TripDetailScreen(
                             lineHeight = 32.sp
                         )
 
-                        // Banner informativo se l'utente ha già prenotato questo viaggio
                         if (hasAlreadyBooked && ruoloUtente != "ORGANIZZATORE") {
                             Spacer(modifier = Modifier.height(14.dp))
                             Surface(
@@ -1405,7 +1797,7 @@ fun TripDetailScreen(
                                             color = TripDarkGreen
                                         )
                                         Text(
-                                            text = "Posti totali prenotati da te: $totalAlreadyBookedSpots • Esportabile in .ics dalla tab Viaggi.",
+                                            text = "Posti prenotati da te: $totalAlreadyBookedSpots • Esportabile in .ics dalla tab Viaggi.",
                                             fontSize = 12.sp,
                                             color = Color.DarkGray
                                         )
@@ -1418,44 +1810,49 @@ fun TripDetailScreen(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            HighlightPill(icon = Icons.Default.Person, text = "${trip.availableSpots} posti disponibili")
-                            HighlightPill(icon = Icons.Default.DateRange, text = "Calendario .ics")
+                            QuickSpecTile(
+                                modifier = Modifier.weight(1f),
+                                icon = Icons.Default.Place,
+                                label = "Programma",
+                                value = "${itinerarySteps.size} tappe incluse",
+                                tint = accentColor
+                            )
+                            QuickSpecTile(
+                                modifier = Modifier.weight(1f),
+                                icon = Icons.Default.Info,
+                                label = "Guida & Lingua",
+                                value = "Italiano / Inglese",
+                                tint = TripDarkGreen
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))
 
                         // =========================================================================
-                        // 3. VERO CALENDARIO MENSILE CON PREZZI VARIABILI (PER LE ATTIVITÀ)
-                        //    OPPURE SELETTORE TURNI DI PARTENZA (PER I VIAGGI MULTI-GIORNO)
+                        // 3. CALENDARIO PULITO CON BLOCCO AUTOMATICO CASELLE IN BASE AI PARTECIPANTI
                         // =========================================================================
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (isActivity) "Calendario Disponibilità & Tariffe"
-                                    else "Scegli Turno di Partenza & Formula",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = TripBlack
-                                )
-                                Text(
-                                    text = if (isActivity) "Tocca un giorno sul calendario: i prezzi variano tra feriali e weekend"
-                                    else "Seleziona il turno di partenza multi-giorno più adatto a te",
-                                    fontSize = 12.sp,
-                                    color = Color.Gray
-                                )
-                            }
-                            if (ruoloUtente == "ORGANIZZATORE") {
-                                TextButton(onClick = { showDynamicPricingDialog = true }) {
-                                    Text("Configura", color = TripGreen, fontWeight = FontWeight.ExtraBold)
-                                }
-                            }
-                        }
+                        Text(
+                            text = if (isOrganizerRole) {
+                                if (isActivity) "Calendario Agenzia (Tocca un giorno per aggiungere posti)"
+                                else "Turni di Partenza (Tocca un turno per gestire i posti)"
+                            } else {
+                                if (isActivity) "Seleziona una Data Disponibile"
+                                else "Scegli Turno di Partenza"
+                            },
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TripBlack
+                        )
+                        Text(
+                            text = if (isOrganizerRole)
+                                "Puoi selezionare qualsiasi data futura (anche con 0 posti) per aumentare i posti disponibili ai viaggiatori"
+                            else
+                                "Le date passate o che non dispongono di almeno $spotsToBook posto/i non sono selezionabili",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
 
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -1468,13 +1865,14 @@ fun TripDetailScreen(
                                 SimpleDateFormat("MMMM yyyy", Locale.ITALY).format(c.time).replaceFirstChar { it.uppercase() }
                             }
 
+                            val canGoPreviousMonth = calendarYear > todayYear || (calendarYear == todayYear && calendarMonth > todayMonth)
+
                             Surface(
                                 shape = RoundedCornerShape(20.dp),
                                 color = TripWarmBg,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
-                                    // Barra di navigazione Mese Precedente / Successivo
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1482,23 +1880,50 @@ fun TripDetailScreen(
                                     ) {
                                         IconButton(
                                             onClick = {
-                                                if (calendarMonth == 0) {
-                                                    calendarMonth = 11
-                                                    calendarYear--
-                                                } else calendarMonth--
-                                                selectedCalendarDay = 1
+                                                if (canGoPreviousMonth) {
+                                                    if (calendarMonth == 0) {
+                                                        calendarMonth = 11
+                                                        calendarYear--
+                                                    } else calendarMonth--
+                                                    selectedCalendarDay = 1
+                                                }
                                             },
-                                            modifier = Modifier.size(36.dp).clip(CircleShape).background(Color.White)
+                                            enabled = canGoPreviousMonth,
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(if (canGoPreviousMonth) Color.White else Color.LightGray.copy(alpha = 0.3f))
                                         ) {
-                                            Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Mese precedente", tint = TripBlack)
+                                            Icon(
+                                                Icons.Default.KeyboardArrowLeft,
+                                                contentDescription = "Mese precedente",
+                                                tint = if (canGoPreviousMonth) TripBlack else Color.Gray
+                                            )
                                         }
 
-                                        Text(
-                                            text = monthTitle,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 16.sp,
-                                            color = TripBlack
-                                        )
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = monthTitle,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 16.sp,
+                                                color = TripBlack
+                                            )
+                                            if (calendarMonth in 5..7) {
+                                                Text(
+                                                    text = "☀️ Alta Stagione Estiva",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = TripOrangeActivity
+                                                )
+                                            } else if (calendarMonth == 11) {
+                                                Text(
+                                                    text = "🎄 Festività Invernali",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = TripOrangeActivity
+                                                )
+                                            }
+                                        }
 
                                         IconButton(
                                             onClick = {
@@ -1516,7 +1941,6 @@ fun TripDetailScreen(
 
                                     Spacer(modifier = Modifier.height(10.dp))
 
-                                    // Intestazione giorni della settimana (Lun - Dom)
                                     val weekDays = listOf("Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom")
                                     Row(modifier = Modifier.fillMaxWidth()) {
                                         weekDays.forEachIndexed { idx, dName ->
@@ -1533,7 +1957,6 @@ fun TripDetailScreen(
 
                                     Spacer(modifier = Modifier.height(8.dp))
 
-                                    // Griglia del Calendario con Prezzi Giornalieri
                                     val totalCells = leadingEmptyCells + monthDays.size
                                     val rows = (totalCells + 6) / 7
 
@@ -1549,33 +1972,34 @@ fun TripDetailScreen(
                                                     val dayItem = monthDays.getOrNull(dayIndex)
 
                                                     if (dayItem == null) {
-                                                        Spacer(modifier = Modifier.weight(1f).height(52.dp))
+                                                        Spacer(modifier = Modifier.weight(1f).height(48.dp))
                                                     } else {
-                                                        val isSelected = dayItem.dayOfMonth == selectedCalendarDay
+                                                        val hasSpotsForTraveler = !dayItem.isPastDate && dayItem.availableSpotsForDay >= spotsToBook && dayItem.availableSpotsForDay > 0
+                                                        val isCellClickable = if (isOrganizerRole) !dayItem.isPastDate else hasSpotsForTraveler
+                                                        val isSelected = isCellClickable && dayItem.dayOfMonth == selectedCalendarDay
+
                                                         val bgColor = when {
                                                             isSelected -> TripGreen
-                                                            dayItem.tier == "WEEKEND" -> TripOrangeActivity.copy(alpha = 0.1f)
-                                                            dayItem.tier == "PROMO" -> TripGreen.copy(alpha = 0.12f)
+                                                            dayItem.isPastDate -> Color.LightGray.copy(alpha = 0.22f)
+                                                            !hasSpotsForTraveler && isOrganizerRole -> TripOrangeActivity.copy(alpha = 0.14f)
+                                                            !hasSpotsForTraveler -> Color.LightGray.copy(alpha = 0.28f)
+                                                            dayItem.isHighDemandOrHoliday -> TripOrangeActivity.copy(alpha = 0.08f)
                                                             else -> Color.White
-                                                        }
-                                                        val priceColor = when {
-                                                            isSelected -> Color.White
-                                                            dayItem.tier == "WEEKEND" -> TripOrangeActivity
-                                                            dayItem.tier == "PROMO" -> TripDarkGreen
-                                                            else -> Color.DarkGray
                                                         }
 
                                                         Box(
                                                             modifier = Modifier
                                                                 .weight(1f)
-                                                                .height(52.dp)
+                                                                .height(48.dp)
                                                                 .clip(RoundedCornerShape(10.dp))
                                                                 .background(bgColor)
                                                                 .then(
                                                                     if (isSelected) Modifier.border(2.dp, TripDarkGreen, RoundedCornerShape(10.dp))
                                                                     else Modifier
                                                                 )
-                                                                .clickable { selectedCalendarDay = dayItem.dayOfMonth },
+                                                                .clickable(enabled = isCellClickable) {
+                                                                    selectedCalendarDay = dayItem.dayOfMonth
+                                                                },
                                                             contentAlignment = Alignment.Center
                                                         ) {
                                                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1583,13 +2007,30 @@ fun TripDetailScreen(
                                                                     text = "${dayItem.dayOfMonth}",
                                                                     fontWeight = FontWeight.ExtraBold,
                                                                     fontSize = 13.sp,
-                                                                    color = if (isSelected) Color.White else TripBlack
+                                                                    color = when {
+                                                                        isSelected -> Color.White
+                                                                        dayItem.isPastDate -> Color.Gray.copy(alpha = 0.45f)
+                                                                        !hasSpotsForTraveler && !isOrganizerRole -> Color.Gray.copy(alpha = 0.55f)
+                                                                        else -> TripBlack
+                                                                    }
                                                                 )
                                                                 Text(
-                                                                    text = "€${dayItem.price.roundToInt()}",
+                                                                    text = when {
+                                                                        dayItem.isPastDate -> "—"
+                                                                        dayItem.availableSpotsForDay <= 0 && isOrganizerRole -> "0p"
+                                                                        !hasSpotsForTraveler && !isOrganizerRole -> "—"
+                                                                        else -> "€${dayItem.price.roundToInt()}"
+                                                                    },
                                                                     fontWeight = FontWeight.Bold,
                                                                     fontSize = 10.sp,
-                                                                    color = priceColor
+                                                                    color = when {
+                                                                        isSelected -> Color.White
+                                                                        dayItem.isPastDate -> Color.Gray.copy(alpha = 0.4f)
+                                                                        dayItem.availableSpotsForDay <= 0 && isOrganizerRole -> MaterialTheme.colorScheme.error
+                                                                        !hasSpotsForTraveler && !isOrganizerRole -> Color.Gray.copy(alpha = 0.45f)
+                                                                        dayItem.isHighDemandOrHoliday -> TripOrangeActivity
+                                                                        else -> TripDarkGreen
+                                                                    }
                                                                 )
                                                             }
                                                         }
@@ -1599,105 +2040,253 @@ fun TripDetailScreen(
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.height(12.dp))
-
-                                    // Legenda Colori Prezzi del Calendario
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("🟢 Mar-Mer: Promo (-$midweekDiscountPercent%)", fontSize = 11.sp, color = TripDarkGreen, fontWeight = FontWeight.Bold)
-                                        Text("⚪ Lun/Gio: Base", fontSize = 11.sp, color = Color.DarkGray)
-                                        Text("🟠 Ven-Dom: Weekend (+$weekendMarkupPercent%)", fontSize = 11.sp, color = TripOrangeActivity, fontWeight = FontWeight.Bold)
-                                    }
-
-                                    if (selectedDayObj != null) {
-                                        Spacer(modifier = Modifier.height(10.dp))
+                                    if (selectedDayObj != null && !selectedDayObj.isPastDate) {
+                                        Spacer(modifier = Modifier.height(12.dp))
                                         Surface(
-                                            shape = RoundedCornerShape(12.dp),
+                                            shape = RoundedCornerShape(14.dp),
                                             color = Color.White,
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Row(
-                                                modifier = Modifier.padding(12.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column(modifier = Modifier.weight(1f)) {
+                                            Column(modifier = Modifier.padding(14.dp)) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = selectedDayObj.formattedLabel,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            fontSize = 14.sp,
+                                                            color = TripBlack
+                                                        )
+                                                        Spacer(modifier = Modifier.height(2.dp))
+                                                        Text(
+                                                            text = if (isOrganizerRole)
+                                                                "${selectedDayObj.availableSpotsForDay} posti attuali in questa data"
+                                                            else
+                                                                selectedDayObj.seasonNote,
+                                                            fontSize = 12.sp,
+                                                            color = if (selectedDayObj.availableSpotsForDay > 0) TripGreen else MaterialTheme.colorScheme.error,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
                                                     Text(
-                                                        text = selectedDayObj.formattedLabel,
+                                                        text = "€${selectedDayObj.price}",
                                                         fontWeight = FontWeight.ExtraBold,
-                                                        fontSize = 13.sp,
-                                                        color = TripBlack
-                                                    )
-                                                    Text(
-                                                        text = "${selectedDayObj.badgeText} • $currentAvailableSpots posti disponibili",
-                                                        fontSize = 11.sp,
-                                                        color = TripGreen,
-                                                        fontWeight = FontWeight.SemiBold
+                                                        fontSize = 19.sp,
+                                                        color = TripDarkGreen
                                                     )
                                                 }
-                                                Text(
-                                                    text = "€${selectedDayObj.price}",
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    fontSize = 18.sp,
-                                                    color = TripDarkGreen
-                                                )
+
+                                                if (isOrganizerRole) {
+                                                    Spacer(modifier = Modifier.height(10.dp))
+                                                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.35f))
+                                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            modifier = Modifier
+                                                                .background(TripWarmBg, RoundedCornerShape(12.dp))
+                                                                .padding(horizontal = 4.dp)
+                                                        ) {
+                                                            IconButton(
+                                                                onClick = { if (agencyEditedSpotsForDate > 0) agencyEditedSpotsForDate-- },
+                                                                modifier = Modifier.size(34.dp)
+                                                            ) {
+                                                                Text("-", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
+                                                            }
+                                                            Text(
+                                                                text = "$agencyEditedSpotsForDate posti",
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                fontSize = 13.sp,
+                                                                color = TripBlack,
+                                                                modifier = Modifier.padding(horizontal = 8.dp)
+                                                            )
+                                                            IconButton(
+                                                                onClick = { agencyEditedSpotsForDate++ },
+                                                                modifier = Modifier.size(34.dp)
+                                                            ) {
+                                                                Text("+", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TripGreen)
+                                                            }
+                                                        }
+
+                                                        Button(
+                                                            onClick = {
+                                                                val datePrefs = context.getSharedPreferences("date_inventory_prefs", Context.MODE_PRIVATE)
+                                                                datePrefs.edit()
+                                                                    .putInt("custom_cap_${currentTripId}_${selectedDayObj.dateIso}", agencyEditedSpotsForDate)
+                                                                    .putInt("booked_${currentTripId}_${selectedDayObj.dateIso}", 0)
+                                                                    .apply()
+                                                                inventoryRefreshTrigger++
+                                                                agencySpotsSavedFeedback = true
+
+                                                                if (agencyEditedSpotsForDate > trip.availableSpots) {
+                                                                    viewModel.updateTrip(
+                                                                        tokenUtente,
+                                                                        currentTripId,
+                                                                        TripRequest(
+                                                                            title = trip.title,
+                                                                            description = trip.description ?: "",
+                                                                            price = trip.price,
+                                                                            startDate = trip.startDate,
+                                                                            endDate = trip.endDate,
+                                                                            availableSpots = agencyEditedSpotsForDate,
+                                                                            location = trip.location ?: "",
+                                                                            imageUrls = trip.imageUrls
+                                                                        )
+                                                                    )
+                                                                }
+                                                            },
+                                                            colors = ButtonDefaults.buttonColors(containerColor = TripGreen),
+                                                            shape = RoundedCornerShape(10.dp),
+                                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = if (agencySpotsSavedFeedback) "✓ Aggiornato" else "Salva Posti Data",
+                                                                fontSize = 12.sp,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = Color.White
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         } else {
-                            // FINESTRE DI PARTENZA PER I VIAGGI DI PIÙ GIORNI
+                            // TURNI DI PARTENZA PER VIAGGI DI PIÙ GIORNI (CON BLOCCO DATE PASSATE E GESTIONE POSTI AGENZIA)
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 multiDayOptions.forEachIndexed { index, option ->
-                                    val isSelected = selectedOptionIndex == index
+                                    val hasSpotsForTraveler = !option.isPastDate && option.availableSpots >= spotsToBook && option.availableSpots > 0
+                                    val isOptionClickable = if (isOrganizerRole) !option.isPastDate else hasSpotsForTraveler
+                                    val isSelected = isOptionClickable && selectedOptionIndex == index
+
                                     Surface(
                                         shape = RoundedCornerShape(16.dp),
-                                        color = if (isSelected) TripGreen.copy(alpha = 0.1f) else TripWarmBg,
+                                        color = when {
+                                            isSelected -> TripGreen.copy(alpha = 0.1f)
+                                            option.isPastDate || !isOptionClickable -> Color.LightGray.copy(alpha = 0.25f)
+                                            else -> TripWarmBg
+                                        },
                                         border = if (isSelected) BorderStroke(2.dp, TripGreen) else null,
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clickable { selectedOptionIndex = index }
+                                            .clickable(enabled = isOptionClickable) {
+                                                selectedOptionIndex = index
+                                            }
                                     ) {
-                                        Row(
-                                            modifier = Modifier.padding(14.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Surface(
-                                                    color = if (isSelected) TripGreen else Color.White,
-                                                    shape = RoundedCornerShape(6.dp)
-                                                ) {
+                                        Column(modifier = Modifier.padding(14.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Surface(
+                                                        color = if (isSelected) TripGreen else Color.White,
+                                                        shape = RoundedCornerShape(6.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = when {
+                                                                option.isPastDate -> "Data Passata (Bloccata)"
+                                                                !hasSpotsForTraveler && isOrganizerRole -> "0 posti (Tocca per aggiungere)"
+                                                                !hasSpotsForTraveler -> "Non disponibile per $spotsToBook pers."
+                                                                else -> option.seasonLabel
+                                                            },
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = when {
+                                                                isSelected -> Color.White
+                                                                option.isPastDate || (!hasSpotsForTraveler && !isOrganizerRole) -> Color.Gray
+                                                                !hasSpotsForTraveler && isOrganizerRole -> MaterialTheme.colorScheme.error
+                                                                else -> TripDarkGreen
+                                                            },
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.height(4.dp))
                                                     Text(
-                                                        text = option.badge,
-                                                        fontSize = 10.sp,
+                                                        text = option.title,
                                                         fontWeight = FontWeight.ExtraBold,
-                                                        color = if (isSelected) Color.White else TripDarkGreen,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                        fontSize = 15.sp,
+                                                        color = if (isOptionClickable) TripBlack else Color.Gray
                                                     )
                                                 }
-                                                Spacer(modifier = Modifier.height(4.dp))
                                                 Text(
-                                                    text = option.title,
+                                                    text = "€${option.pricePerPerson}",
+                                                    fontSize = 18.sp,
                                                     fontWeight = FontWeight.ExtraBold,
-                                                    fontSize = 15.sp,
-                                                    color = TripBlack
-                                                )
-                                                Text(
-                                                    text = "${option.subtitle} • ${option.availableSpots} posti liberi",
-                                                    fontSize = 12.sp,
-                                                    color = Color.DarkGray
+                                                    color = if (isOptionClickable) TripDarkGreen else Color.Gray
                                                 )
                                             }
-                                            Text(
-                                                text = "€${option.pricePerPerson}",
-                                                fontSize = 18.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = TripDarkGreen
-                                            )
+
+                                            if (isOrganizerRole && isSelected && !option.isPastDate) {
+                                                Spacer(modifier = Modifier.height(10.dp))
+                                                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier
+                                                            .background(Color.White, RoundedCornerShape(10.dp))
+                                                            .padding(horizontal = 4.dp)
+                                                    ) {
+                                                        IconButton(
+                                                            onClick = { if (agencyEditedSpotsForDate > 0) agencyEditedSpotsForDate-- },
+                                                            modifier = Modifier.size(32.dp)
+                                                        ) {
+                                                            Text("-", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
+                                                        }
+                                                        Text(
+                                                            text = "$agencyEditedSpotsForDate posti",
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            fontSize = 13.sp,
+                                                            color = TripBlack,
+                                                            modifier = Modifier.padding(horizontal = 8.dp)
+                                                        )
+                                                        IconButton(
+                                                            onClick = { agencyEditedSpotsForDate++ },
+                                                            modifier = Modifier.size(32.dp)
+                                                        ) {
+                                                            Text("+", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TripGreen)
+                                                        }
+                                                    }
+
+                                                    Button(
+                                                        onClick = {
+                                                            val datePrefs = context.getSharedPreferences("date_inventory_prefs", Context.MODE_PRIVATE)
+                                                            datePrefs.edit()
+                                                                .putInt("custom_cap_${currentTripId}_${option.dateIso}", agencyEditedSpotsForDate)
+                                                                .putInt("booked_${currentTripId}_${option.dateIso}", 0)
+                                                                .apply()
+                                                            inventoryRefreshTrigger++
+                                                            agencySpotsSavedFeedback = true
+                                                        },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = TripGreen),
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = if (agencySpotsSavedFeedback) "✓ Aggiornato" else "Salva Posti Turno",
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color.White
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -1706,60 +2295,281 @@ fun TripDetailScreen(
 
                         Spacer(modifier = Modifier.height(22.dp))
 
-                        // 4. CARD TOUR OPERATOR
+                        // =========================================================================
+                        // 4. CARD TOUR OPERATOR CON PULSANTE "CONTATTA AGENZIA"
+                        // =========================================================================
                         Surface(
                             shape = RoundedCornerShape(18.dp),
                             color = TripWarmBg,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(46.dp)
-                                        .clip(CircleShape)
-                                        .background(TripGreen),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.White)
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(46.dp)
+                                            .clip(CircleShape)
+                                            .background(TripGreen),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.White)
+                                    }
+                                    Spacer(modifier = Modifier.width(14.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "Organizzato da ${trip.organizerName ?: "Agenzia Partner Horizon"}",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 15.sp,
+                                            color = TripBlack
+                                        )
+                                        Text(
+                                            "Operatore Verificato • Tempo di risposta medio < 1 ora",
+                                            fontSize = 12.sp,
+                                            color = Color.Gray
+                                        )
+                                    }
                                 }
-                                Spacer(modifier = Modifier.width(14.dp))
-                                Column {
-                                    Text(
-                                        "Organizzato da ${trip.organizerName ?: "Agenzia Partner Horizon"}",
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 15.sp,
-                                        color = TripBlack
-                                    )
-                                    Text(
-                                        "Operatore Verificato • Assistenza dedicata inclusa",
-                                        fontSize = 12.sp,
-                                        color = Color.Gray
-                                    )
+
+                                if (ruoloUtente != "ORGANIZZATORE") {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    OutlinedButton(
+                                        onClick = { showContactAgencySheet = true },
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.5.dp, TripGreen),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.Email, contentDescription = null, tint = TripGreen, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Contatta l'Agenzia Organizzatrice",
+                                            color = TripDarkGreen,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 13.sp
+                                        )
+                                    }
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(22.dp))
+                        Spacer(modifier = Modifier.height(24.dp))
 
-                        // 5. DESCRIZIONE E PROGRAMMA
-                        Text("Programma e Dettagli dell'Esperienza", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
-                        Spacer(modifier = Modifier.height(8.dp))
+                        // =========================================================================
+                        // 5. PANORAMICA + TIMELINE STEP-BY-STEP PERSONALIZZATA DALL'AGENZIA
+                        // =========================================================================
                         Text(
-                            text = trip.description ?: "Nessuna descrizione fornita per questo pacchetto.",
+                            text = "Panoramica dell'Esperienza",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TripBlack
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = cleanOverviewText,
                             fontSize = 14.sp,
                             color = Color.DarkGray,
                             lineHeight = 21.sp
                         )
+
+                        Spacer(modifier = Modifier.height(22.dp))
+
+                        Surface(
+                            shape = RoundedCornerShape(22.dp),
+                            color = TripWarmBg,
+                            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.2f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(18.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(accentColor.copy(alpha = 0.14f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.Place, contentDescription = null, tint = accentColor, modifier = Modifier.size(20.dp))
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = if (isActivity) "Cosa aspettarsi (Tappa per Tappa)"
+                                                else "Itinerario Ufficiale del Viaggio",
+                                                fontSize = 17.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = TripBlack
+                                            )
+                                            Text(
+                                                text = "${itinerarySteps.size} tappe programmate dall'agenzia",
+                                                fontSize = 12.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                    }
+
+                                    if (ruoloUtente == "ORGANIZZATORE") {
+                                        TextButton(onClick = { showEditDialog = true }) {
+                                            Icon(Icons.Default.Edit, contentDescription = null, tint = accentColor, modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Modifica Tappe", color = accentColor, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                        }
+                                    } else {
+                                        TextButton(onClick = { expandAllSteps = !expandAllSteps }) {
+                                            Text(
+                                                text = if (expandAllSteps) "Comprimi" else "Espandi",
+                                                color = accentColor,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(TripDarkGreen),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = "Partenza: ${trip.location ?: "Punto d'incontro ufficiale"}",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 13.sp,
+                                        color = TripDarkGreen
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                itinerarySteps.forEachIndexed { idx, step ->
+                                    val isLast = idx == itinerarySteps.lastIndex
+                                    var isStepExpanded by remember(expandAllSteps) { mutableStateOf(expandAllSteps) }
+
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(IntrinsicSize.Min)
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier.width(28.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(28.dp)
+                                                    .clip(CircleShape)
+                                                    .background(accentColor),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = "${step.stepNumber}",
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    fontSize = 13.sp
+                                                )
+                                            }
+                                            if (!isLast) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(2.5.dp)
+                                                        .fillMaxHeight()
+                                                        .background(accentColor.copy(alpha = 0.35f))
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(12.dp))
+
+                                        Surface(
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = Color.White,
+                                            shadowElevation = 1.dp,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .padding(bottom = if (isLast) 0.dp else 12.dp)
+                                                .clickable { isStepExpanded = !isStepExpanded }
+                                        ) {
+                                            Column(modifier = Modifier.padding(14.dp)) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = step.title,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        fontSize = 14.sp,
+                                                        color = TripBlack,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Surface(
+                                                        color = accentColor.copy(alpha = 0.12f),
+                                                        shape = RoundedCornerShape(6.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = step.duration,
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = accentColor,
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                Spacer(modifier = Modifier.height(6.dp))
+
+                                                Surface(
+                                                    color = TripGreen.copy(alpha = 0.1f),
+                                                    shape = RoundedCornerShape(6.dp)
+                                                ) {
+                                                    Text(
+                                                        text = step.ticketInfo,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = TripDarkGreen,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    )
+                                                }
+
+                                                AnimatedVisibility(visible = isStepExpanded) {
+                                                    Column {
+                                                        Spacer(modifier = Modifier.height(8.dp))
+                                                        Text(
+                                                            text = step.description,
+                                                            fontSize = 13.sp,
+                                                            color = Color.DarkGray,
+                                                            lineHeight = 19.sp
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(28.dp))
                         HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
                         Spacer(modifier = Modifier.height(20.dp))
 
                         // =========================================================================
-                        // 6. SEZIONE RECENSIONI (CON COORDINATA Y PER LO SCROLL AUTOMATICO)
+                        // 6. SEZIONE RECENSIONI REALI DAL DATABASE POSTGRESQL
                         // =========================================================================
                         Row(
                             modifier = Modifier
@@ -1772,13 +2582,16 @@ fun TripDetailScreen(
                         ) {
                             Column {
                                 Text(
-                                    text = "Recensioni dei Viaggiatori",
+                                    text = "Recensioni dei Viaggiatori ($realReviewCount)",
                                     fontSize = 19.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = TripBlack
                                 )
                                 Text(
-                                    text = "Valutazioni verificate della community Horizon",
+                                    text = if (realReviewCount > 0)
+                                        "Media verificata: ${String.format(Locale.US, "%.1f", realAverageRating)} / 5.0"
+                                    else
+                                        "Nessuna recensione ancora presente per questa offerta",
                                     fontSize = 12.sp,
                                     color = Color.Gray
                                 )
@@ -1798,31 +2611,46 @@ fun TripDetailScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        reviews.forEach { rev ->
+                        if (dbReviews.isEmpty()) {
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = TripWarmBg,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp)
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(14.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(rev.author, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = TripBlack)
-                                        Text(rev.date, fontSize = 11.sp, color = Color.Gray)
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Row {
-                                        repeat(rev.rating) {
-                                            Icon(Icons.Default.Star, contentDescription = null, tint = TripAmber, modifier = Modifier.size(15.dp))
+                                Text(
+                                    text = "Sii il primo viaggiatore a lasciare una recensione per questa esperienza!",
+                                    fontSize = 13.sp,
+                                    color = Color.Gray,
+                                    modifier = Modifier.padding(16.dp)
+                                )
+                            }
+                        } else {
+                            dbReviews.forEach { rev ->
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = TripWarmBg,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(14.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(rev.author, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = TripBlack)
+                                            Text(rev.date, fontSize = 11.sp, color = Color.Gray)
                                         }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Row {
+                                            repeat(rev.rating) {
+                                                Icon(Icons.Default.Star, contentDescription = null, tint = TripAmber, modifier = Modifier.size(15.dp))
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(rev.comment, fontSize = 13.sp, color = Color.DarkGray, lineHeight = 18.sp)
                                     }
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(rev.comment, fontSize = 13.sp, color = Color.DarkGray, lineHeight = 18.sp)
                                 }
                             }
                         }
@@ -1902,18 +2730,43 @@ fun TripDetailScreen(
 }
 
 @Composable
-private fun HighlightPill(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+private fun QuickSpecTile(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    label: String,
+    value: String,
+    tint: Color
+) {
     Surface(
+        modifier = modifier,
         color = TripWarmBg,
-        shape = RoundedCornerShape(50)
+        shape = RoundedCornerShape(14.dp)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = null, tint = TripGreen, modifier = Modifier.size(15.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TripBlack)
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(tint.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Text(label, fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                Text(
+                    value,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TripBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }

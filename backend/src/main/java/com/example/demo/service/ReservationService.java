@@ -107,6 +107,11 @@ public class ReservationService {
     private ReservationDTO convertToDTO(Reservation reservation) {
         ReservationDTO dto = modelMapper.map(reservation, ReservationDTO.class);
         dto.setTripTitle(reservation.getTrip().getTitle());
+        if (reservation.getTraveler() != null) {
+            dto.setTravelerId(reservation.getTraveler().getId());
+            dto.setTravelerName(reservation.getTraveler().getName());
+            dto.setTravelerEmail(reservation.getTraveler().getEmail());
+        }
         return dto;
     }
 }

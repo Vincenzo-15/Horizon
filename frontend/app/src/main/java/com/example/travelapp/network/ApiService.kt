@@ -151,6 +151,13 @@ interface ApiService {
         @Header("Authorization") token: String
     ): retrofit2.Response<List<com.example.travelapp.network.NotificationDTO>>
 
+    @POST("/api/notifications/review/{tripId}")
+    suspend fun addReviewToTrip(
+        @Header("Authorization") token: String,
+        @Path("tripId") tripId: Long,
+        @Body request: CreateReviewRequest
+    ): Response<TripDTO>
+
     // --- PROFILO UTENTE E IMPOSTAZIONI ---
 
     @GET("/api/users/me")
@@ -219,6 +226,10 @@ data class ChangePasswordRequest(
     val newPassword: String
 )
 
+data class CreateReviewRequest(
+    val rating: Int,
+    val comment: String
+)
 data class ForgotPasswordRequest(
     val email: String,
 )

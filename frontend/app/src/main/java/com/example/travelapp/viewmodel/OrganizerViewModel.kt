@@ -10,6 +10,7 @@ import com.example.travelapp.network.ReservationDTO
 import com.example.travelapp.network.RetrofitClient
 import com.example.travelapp.network.TripDTO
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class OrganizerViewModel : ViewModel() {
 
@@ -24,6 +25,7 @@ class OrganizerViewModel : ViewModel() {
     var totalRevenue by mutableStateOf(0.0)
     var totalBookedSpots by mutableStateOf(0)
     var averageCatalogRating by mutableStateOf(0.0)
+    var totalAgencyReviews by mutableStateOf(0)
 
     fun fetchMyTrips(token: String) {
         if (token.isBlank()) return
@@ -35,19 +37,26 @@ class OrganizerViewModel : ViewModel() {
             try {
                 val authHeader = "Bearer $token"
 
-                // 1. Carica i pacchetti pubblicati dall'agenzia
+                // 1. Carica i pacchetti pubblicati dall'agenzia e calcola il Rating Partner reale dal DB
                 val response = RetrofitClient.apiService.getMyTrips(authHeader)
                 if (response.isSuccessful && response.body() != null) {
                     myTrips = response.body()!!.reversed()
-                    val rated = myTrips.filter { it.averageRating > 0 }
-                    averageCatalogRating = if (rated.isNotEmpty()) {
-                        rated.map { it.averageRating }.average()
-                    } else 4.9
+
+                    val tripsWithReviews = myTrips.filter { it.reviewCount > 0 && it.averageRating > 0.0 }
+                    val sumReviews = tripsWithReviews.sumOf { it.reviewCount }
+                    totalAgencyReviews = sumReviews
+
+                    averageCatalogRating = if (sumReviews > 0) {
+                        val weightedSum = tripsWithReviews.sumOf { it.averageRating * it.reviewCount }
+                        ((weightedSum / sumReviews) * 10.0).roundToInt() / 10.0
+                    } else {
+                        0.0
+                    }
                 } else {
                     errorMessage = "Impossibile caricare i pacchetti (${response.code()})"
                 }
 
-                // 2. Carica le prenotazioni ricevute e calcola i KPI (Fatturato e Ospiti)
+                // 2. Carica le prenotazioni ricevute e calcola i KPI
                 val ordersResponse = RetrofitClient.apiService.getAgencyOrders(authHeader)
                 if (ordersResponse.isSuccessful && ordersResponse.body() != null) {
                     agencyOrders = ordersResponse.body()!!.reversed()

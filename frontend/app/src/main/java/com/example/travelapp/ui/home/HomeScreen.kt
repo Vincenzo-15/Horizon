@@ -212,16 +212,13 @@ fun HomeScreen(
 
     // Collezioni tematiche per la Home (Stile GetYourGuide / TripAdvisor / Airbnb)
     val topRatedTrips = remember(bookableTrips) {
-        bookableTrips.sortedByDescending { it.averageRating }.take(5)
+        bookableTrips.filter { it.reviewCount > 0 }.sortedWith(compareByDescending<TripDTO> { it.averageRating} .thenByDescending { it.reviewCount }).take(5)
     }
     val dailyActivities = remember(bookableTrips) {
         bookableTrips.filter { isActivityOrExcursion(it) }
     }
     val multiDayTrips = remember(bookableTrips) {
         bookableTrips.filter { !isActivityOrExcursion(it) }
-    }
-    val lastMinuteDeals = remember(bookableTrips) {
-        bookableTrips.filter { it.availableSpots in 1..5 }
     }
 
     // Risultati filtrati quando l'utente usa la ricerca o esplora il catalogo
@@ -658,33 +655,6 @@ fun HomeScreen(
                                                     onClick = {
                                                         viewModel.markTripAsViewed(activity)
                                                         onTripClick(activity.id)
-                                                    }
-                                                )
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.height(28.dp))
-                                    }
-                                }
-
-                                // SEZIONE E: OFFERTE ULTIMI POSTI (SE PRESENTI)
-                                if (lastMinuteDeals.isNotEmpty()) {
-                                    item {
-                                        SectionHeader(
-                                            title = "🔥 Ultimi Posti Disponibili",
-                                            subtitle = "Partenze molto richieste con meno di 5 posti rimasti"
-                                        )
-                                        Spacer(modifier = Modifier.height(12.dp))
-
-                                        LazyRow(
-                                            contentPadding = PaddingValues(horizontal = 24.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(14.dp)
-                                        ) {
-                                            items(lastMinuteDeals) { trip ->
-                                                RecentlyViewedTripCard(
-                                                    trip = trip,
-                                                    onClick = {
-                                                        viewModel.markTripAsViewed(trip)
-                                                        onTripClick(trip.id)
                                                     }
                                                 )
                                             }
@@ -1165,23 +1135,6 @@ fun SpotlightExperienceCard(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
-                if (trip.availableSpots in 1..5) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color.Black.copy(alpha = 0.75f),
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(10.dp)
-                    ) {
-                        Text(
-                            text = "🔥 Ultimi ${trip.availableSpots} posti",
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
-                }
             }
 
             Column(modifier = Modifier.padding(14.dp)) {
@@ -1212,10 +1165,12 @@ fun SpotlightExperienceCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Star, contentDescription = null, tint = TripAmber, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(3.dp))
+                        repeat(trip.averageRating.roundToInt().coerceIn(1, 5)) {
+                            Icon(Icons.Default.Star, contentDescription = null, tint = TripAmber, modifier = Modifier.size(13.dp))
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "${trip.averageRating} (${trip.reviewCount})",
+                            text = if (trip.reviewCount > 0) "${String.format(java.util.Locale.US, "%.1f", trip.averageRating)} (${trip.reviewCount})" else "Nuovo (0)",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = TripBlack
@@ -1555,10 +1510,10 @@ fun RecentlyViewedTripCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Star, contentDescription = null, tint = TripGreen, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Star, contentDescription = null, tint = TripAmber, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "${trip.averageRating} (${trip.reviewCount})",
+                        text = if (trip.reviewCount > 0) "${String.format(java.util.Locale.US, "%.1f", trip.averageRating)} (${trip.reviewCount})" else "Nuovo (0)",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.DarkGray
@@ -1711,12 +1666,6 @@ fun TripAdvisorFullCard(
                             color = TripGreen
                         )
                     }
-                    Text(
-                        text = "${trip.availableSpots} posti liberi",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (trip.availableSpots <= 5) TripOrangeActivity else Color.Gray
-                    )
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -1729,19 +1678,31 @@ fun TripAdvisorFullCard(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Star, contentDescription = null, tint = TripAmber, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "${trip.averageRating}",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = TripBlack
-                    )
-                    Text(
-                        text = " (${trip.reviewCount} recensioni)",
-                        fontSize = 12.sp,
-                        color = Color.Gray
-                    )
+                    if (trip.reviewCount > 0) {
+                        repeat(trip.averageRating.roundToInt().coerceIn(1, 5)) {
+                            Icon(Icons.Default.Star, contentDescription = null, tint = TripAmber, modifier = Modifier.size(14.dp))
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = String.format(java.util.Locale.US, "%.1f", trip.averageRating),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = TripBlack
+                        )
+                        Text(
+                            text = " (${trip.reviewCount} recensioni)",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                    } else {
+                        Icon(Icons.Default.Star, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Nuovo (0 recensioni)",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -1928,7 +1889,7 @@ fun CityDetailScreen(
                 TripAdvisorFullCard(trip = trip, onClick = { onTripClick(trip) })
             }
         }
-    }
+     }
 }
 
 @Composable
@@ -1947,13 +1908,23 @@ fun NotificationItem(title: String, message: String, time: String) {
         Column(modifier = Modifier.weight(1f)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TripBlack)
-                Text(time, fontSize = 12.sp, color = Color.Gray)
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = TripBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(time, fontSize = 11.sp, color = Color.Gray)
             }
             Spacer(modifier = Modifier.height(4.dp))
-            Text(message, fontSize = 13.sp, color = Color.DarkGray)
+            Text(message, fontSize = 13.sp, color = Color.DarkGray, lineHeight = 18.sp)
         }
     }
 }
