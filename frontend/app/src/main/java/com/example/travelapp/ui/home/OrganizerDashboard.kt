@@ -47,6 +47,7 @@ import com.example.travelapp.network.ReservationDTO
 import com.example.travelapp.network.TripDTO
 import com.example.travelapp.ui.theme.*
 import com.example.travelapp.viewmodel.OrganizerViewModel
+import kotlinx.coroutines.delay
 import java.util.Locale
 
 data class ResolvedReceiptInfo(
@@ -150,7 +151,10 @@ fun OrganizerDashboard(
 
     LaunchedEffect(tokenUtente) {
         if (tokenUtente.isNotEmpty()) {
-            viewModel.fetchMyTrips(tokenUtente)
+            while (true) {
+                viewModel.fetchMyTrips(tokenUtente)
+                delay(3000)
+            }
         }
     }
 
@@ -224,6 +228,29 @@ fun OrganizerDashboard(
                         indicatorColor = TripGreen.copy(alpha = 0.15f)
                     ),
                     onClick = { selectedTab = "Ordini" }
+                )
+                NavigationBarItem(
+                    icon = {
+                        BadgedBox(
+                            badge = {
+                                if (viewModel.unreadChatsCount > 0) {
+                                    Badge(containerColor = Color(0xFFE53935)) {
+                                        Text("${viewModel.unreadChatsCount}", color = Color.White)
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.Email, "Messaggi")
+                        }
+                    },
+                    label = { Text("Messaggi", fontWeight = FontWeight.SemiBold) },
+                    selected = selectedTab == "Messaggi",
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = TripGreen,
+                        selectedTextColor = TripGreen,
+                        indicatorColor = TripGreen.copy(alpha = 0.15f)
+                    ),
+                    onClick = { selectedTab = "Messaggi" }
                 )
                 NavigationBarItem(
                     icon = { Icon(Icons.Default.Person, "Profilo") },
@@ -488,11 +515,6 @@ fun OrganizerDashboard(
                                         catalogFilter = "ATTIVITA"
                                     }
                                 }
-                                item {
-                                    OfferTypeChip("⚠️ Pochi posti ($soldOutOrLowCount)", catalogFilter == "LOW_SPOTS") {
-                                        catalogFilter = "LOW_SPOTS"
-                                    }
-                                }
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                         }
@@ -617,6 +639,15 @@ fun OrganizerDashboard(
                         }
                     }
                 }
+
+                "Messaggi" -> {
+                    LiveChatTabScreen(
+                        tokenUtente = tokenUtente,
+                        ruoloUtente = "ORGANIZZATORE",
+                        initialTrips = viewModel.myTrips,
+                        onUnreadChatsCountChanged = { count -> viewModel.unreadChatsCount = count}
+                    )
+                }
             }
         }
     }
@@ -677,6 +708,30 @@ fun OrganizerDashboard(
                         modifier = Modifier.heightIn(max = 420.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        // Notifiche dei nuovi messaggi in Chat e recensioni (toccandole apre la sezione Messaggi)
+                        items(viewModel.myNotifications) { notifica ->
+                            val isChatNotif = notifica.title.contains("Chat", ignoreCase = true)
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = TripWarmBg,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        if (isChatNotif) {
+                                            showNotificationsSheet = false
+                                            selectedTab = "Messaggi"
+                                        }
+                                    }
+                            ) {
+                                Box(modifier = Modifier.padding(14.dp)) {
+                                    NotificationItem(
+                                        title = notifica.title,
+                                        message = notifica.message + if (isChatNotif) " (Tocca per rispondere in chat)" else "",
+                                        time = notifica.timestamp.take(10)
+                                    )
+                                }
+                            }
+                        }
                         items(viewModel.agencyOrders) { order ->
                             val matchedTrip = viewModel.myTrips.find { it.id == order.tripId }
                             val receiptInfo = resolveReceiptDetails(context, order, matchedTrip, notificationMessages)

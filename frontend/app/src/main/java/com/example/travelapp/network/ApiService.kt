@@ -158,6 +158,26 @@ interface ApiService {
         @Body request: CreateReviewRequest
     ): Response<TripDTO>
 
+    // --- LIVE CHAT IN TEMPO REALE ---
+    @GET("/api/notifications/chat/conversations")
+    suspend fun getChatConversations(
+        @Header("Authorization") token: String
+    ): Response<List<ChatConversationDTO>>
+
+    @GET("/api/notifications/chat/{tripId}")
+    suspend fun getChatMessages(
+        @Header("Authorization") token: String,
+        @Path("tripId") tripId: Long,
+        @Query("travelerEmail") travelerEmail: String? = null
+    ): Response<List<ChatMessageDTO>>
+
+    @POST("/api/notifications/chat/{tripId}")
+    suspend fun sendChatMessage(
+        @Header("Authorization") token: String,
+        @Path("tripId") tripId: Long,
+        @Body request: SendChatMessageRequest
+    ): Response<ChatMessageDTO>
+
     // --- PROFILO UTENTE E IMPOSTAZIONI ---
 
     @GET("/api/users/me")
@@ -232,4 +252,33 @@ data class CreateReviewRequest(
 )
 data class ForgotPasswordRequest(
     val email: String,
+)
+
+data class SendChatMessageRequest(
+    val message: String,
+    val travelerEmail: String? = null
+)
+
+data class ChatMessageDTO(
+    val id: Long,
+    val tripId: Long,
+    val senderName: String,
+    val senderEmail: String,
+    val senderRole: String,
+    val message: String,
+    val timestamp: String
+)
+
+data class ChatConversationDTO(
+    val tripId: Long,
+    val tripTitle: String,
+    val tripLocation: String,
+    val agencyName: String,
+    val agencyEmail: String,
+    val travelerName: String,
+    val travelerEmail: String,
+    val lastMessage: String,
+    val lastTimestamp: String,
+    val lastUpdatedEpoch: Long,
+    val unreadCount: Int
 )

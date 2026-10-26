@@ -27,6 +27,8 @@ class OrganizerViewModel : ViewModel() {
     var averageCatalogRating by mutableStateOf(0.0)
     var totalAgencyReviews by mutableStateOf(0)
 
+    var unreadChatsCount by mutableStateOf(0)
+
     fun fetchMyTrips(token: String) {
         if (token.isBlank()) return
 
@@ -69,6 +71,12 @@ class OrganizerViewModel : ViewModel() {
                 val notifResponse = RetrofitClient.apiService.getMyNotifications(authHeader)
                 if (notifResponse.isSuccessful && notifResponse.body() != null) {
                     myNotifications = notifResponse.body()!!
+                }
+
+                // 4. Carica il numero di conversazioni con messaggi non letti per il badge nella NavigationBar
+                val chatRes = RetrofitClient.apiService.getChatConversations(authHeader)
+                if (chatRes.isSuccessful && chatRes.body() != null) {
+                    unreadChatsCount = chatRes.body()!!.count { it.unreadCount > 0 }
                 }
 
             } catch (e: Exception) {

@@ -34,7 +34,6 @@ public class AuthController {
         return new ResponseEntity<>(createdUser, HttpStatus.CREATED);
     }
 
-    // 1. Chiamato dall'app Android: invia il link di reset all'email dell'utente
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest request) {
         try {
@@ -42,7 +41,7 @@ public class AuthController {
             return ResponseEntity.ok(Map.of(
                     "message", "Ti abbiamo inviato un'email con il link per reimpostare la password."
             ));
-        } catch (IllegalArgumentException e) {
+        } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }

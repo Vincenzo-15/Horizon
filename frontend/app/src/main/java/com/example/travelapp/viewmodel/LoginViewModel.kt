@@ -71,7 +71,7 @@ class LoginViewModel : ViewModel() {
                 } else {
                     val err = response.errorBody()?.string()
                     isResetError = true
-                    resetFeedbackMessage = if (!err.isNullOrBlank()) err else "Nessun account trovato con questa email."
+                    resetFeedbackMessage = if (!err.isNullOrBlank()) err else "Errore server (${response.code()}): verifica SecurityConfig."
                 }
             } catch (e: Exception) {
                 isResetError = true

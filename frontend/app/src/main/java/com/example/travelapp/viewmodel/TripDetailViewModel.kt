@@ -10,6 +10,7 @@ import com.example.travelapp.network.CreateReviewRequest
 import com.example.travelapp.network.ItineraryListDTO
 import com.example.travelapp.network.ReservationDTO
 import com.example.travelapp.network.RetrofitClient
+import com.example.travelapp.network.SendChatMessageRequest
 import com.example.travelapp.network.TripDTO
 import com.example.travelapp.network.TripRequest
 import kotlinx.coroutines.launch
@@ -97,6 +98,27 @@ class TripDetailViewModel : ViewModel() {
                 )
                 if (response.isSuccessful && response.body() != null) {
                     trip = response.body()
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun startOrSendAgencyChatMessage(
+        token: String,
+        tripId: Long,
+        messageText: String,
+        onSuccess: () -> Unit
+    ) {
+        if (messageText.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.sendChatMessage(
+                    token = "Bearer $token",
+                    tripId = tripId,
+                    request = SendChatMessageRequest(message = messageText.trim())
+                )
+                if (response.isSuccessful) {
+                    onSuccess()
                 }
             } catch (_: Exception) {}
         }

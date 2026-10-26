@@ -35,6 +35,7 @@ import com.example.travelapp.network.ReservationDTO
 import com.example.travelapp.network.TripDTO
 import com.example.travelapp.ui.theme.*
 import com.example.travelapp.viewmodel.HomeViewModel
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 fun isActivityOrExcursion(trip: TripDTO): Boolean {
@@ -190,11 +191,15 @@ fun HomeScreen(
     var icsPreviewReservation by remember { mutableStateOf<ReservationDTO?>(null) }
     val context = LocalContext.current
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(tokenUtente) {
         if (tokenUtente.isNotEmpty()) {
             viewModel.fetchTrips(tokenUtente)
             viewModel.fetchMyReservations(tokenUtente)
-            viewModel.fetchMyNotifications(tokenUtente)
+            while (true) {
+                viewModel.fetchMyNotifications(tokenUtente)
+                viewModel.fetchUnreadChatsCount(tokenUtente)
+                delay(3000)
+            }
         }
     }
 
@@ -202,6 +207,7 @@ fun HomeScreen(
         if (tokenUtente.isNotEmpty()) {
             if (selectedTab == "Viaggi") viewModel.fetchMyReservations(tokenUtente)
             if (selectedTab == "Home") viewModel.fetchTrips(tokenUtente)
+            viewModel.fetchUnreadChatsCount(tokenUtente)
         }
     }
 
@@ -306,6 +312,33 @@ fun HomeScreen(
                     onClick = {
                         selectedTab = "Viaggi"
                         selectedDestination = null
+                    }
+                )
+                NavigationBarItem(
+                    icon = {
+                        BadgedBox(
+                            badge = {
+                                if (viewModel.unreadChatsCount > 0) {
+                                    Badge(containerColor = Color(0xFFE53935)) {
+                                        Text("${viewModel.unreadChatsCount}", color = Color.White)
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.Email, contentDescription = "Messaggi")
+                        }
+                    },
+                    label = { Text("Messaggi", fontWeight = FontWeight.SemiBold) },
+                    selected = selectedTab == "Messaggi",
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = TripGreen,
+                        selectedTextColor = TripGreen,
+                        indicatorColor = TripGreen.copy(alpha = 0.15f)
+                    ),
+                    onClick = {
+                        selectedTab = "Messaggi"
+                        selectedDestination = null
+                        viewingListId = null
                     }
                 )
                 NavigationBarItem(
@@ -496,7 +529,7 @@ fun HomeScreen(
                                         }
                                     }
                                     item {
-                                        OfferTypeChip("✈️ Solo Viaggi", selectedOfferType == "VIAGGI" && searchQuery.isEmpty()) {
+                                        OfferTypeChip("✈️ Viaggi", selectedOfferType == "VIAGGI" && searchQuery.isEmpty()) {
                                             searchQuery = ""
                                             selectedOfferType = "VIAGGI"
                                         }
@@ -828,6 +861,15 @@ fun HomeScreen(
                         onExportIcsClick = { reservation -> icsPreviewReservation = reservation }
                     )
                 }
+
+                "Messaggi" -> {
+                    LiveChatTabScreen(
+                        tokenUtente = tokenUtente,
+                        ruoloUtente = "VIAGGIATORE",
+                        initialTrips = viewModel.trips,
+                        onUnreadChatsCountChanged = { count -> viewModel.unreadChatsCount = count }
+                    )
+                }
             }
         }
     }
@@ -907,11 +949,25 @@ fun HomeScreen(
                     LazyColumn {
                         items(viewModel.myNotifications) { notifica ->
                             val timeText = if (notifica.timestamp.length >= 10) notifica.timestamp.take(10) else "Oggi"
-                            NotificationItem(
-                                title = notifica.title,
-                                message = notifica.message,
-                                time = timeText
-                            )
+                            val isChatNotif = notifica.title.contains("Chat", ignoreCase = true) ||
+                                    notifica.title.contains("risposta", ignoreCase = true)
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        if (isChatNotif) {
+                                            showNotificationsSheet = false
+                                            selectedTab = "Messaggi"
+                                        }
+                                    }
+                            ) {
+                                NotificationItem(
+                                    title = notifica.title,
+                                    message = notifica.message + if (isChatNotif) " (Tocca per aprire la chat)" else "",
+                                    time = timeText
+                                )
+                            }
                             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color.LightGray.copy(alpha = 0.4f))
                         }
                     }

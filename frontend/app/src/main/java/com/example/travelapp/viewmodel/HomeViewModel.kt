@@ -28,6 +28,8 @@ class HomeViewModel : ViewModel() {
 
     var myNotifications by mutableStateOf<List<com.example.travelapp.network.NotificationDTO>>(emptyList())
 
+    var unreadChatsCount by mutableStateOf(0)
+
     fun fetchTrips(token: String) {
         viewModelScope.launch {
             isLoading = true
@@ -84,6 +86,18 @@ class HomeViewModel : ViewModel() {
             } catch (e: Exception) {
                 // Gestisci silenziosamente l'errore delle notifiche
             }
+        }
+    }
+
+    fun fetchUnreadChatsCount(token: String) {
+        viewModelScope.launch {
+            try {
+                val response = RetrofitClient.apiService.getChatConversations("Bearer $token")
+                if (response.isSuccessful && response.body() != null) {
+                    // Conta in quante chat ci sono messaggi non letti
+                    unreadChatsCount = response.body()!!.count { it.unreadCount > 0 }
+                }
+            } catch (_: Exception) {}
         }
     }
 

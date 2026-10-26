@@ -583,11 +583,10 @@ fun TripDetailScreen(
     }
 
     // --- BOTTOM SHEET: CONTATTA L'AGENZIA ORGANIZZATRICE ---
+    // --- BOTTOM SHEET SEMPLIFICATO: CONTATTA L'AGENZIA (CHAT O CHIAMATA) ---
     if (showContactAgencySheet && trip != null) {
         val agencyName = trip.organizerName ?: "Agenzia Partner Horizon"
-        var inquirySubject by remember { mutableStateOf("Informazioni su: ${trip.title}") }
         var inquiryMessage by remember { mutableStateOf("") }
-        var selectedTopic by remember { mutableStateOf("Info Date & Orari") }
 
         ModalBottomSheet(
             onDismissRequest = { showContactAgencySheet = false },
@@ -596,7 +595,6 @@ fun TripDetailScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
@@ -613,13 +611,13 @@ fun TripDetailScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = "ASSISTENZA DIRETTA TOUR OPERATOR",
+                            text = "CONTATTO DIRETTO",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = TripGreen
                         )
                         Text(
-                            text = "Contatta $agencyName",
+                            text = agencyName,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = TripBlack
@@ -628,36 +626,44 @@ fun TripDetailScreen(
                 }
 
                 Text(
-                    text = "Hai domande sulle tappe del programma, esigenze alimentari o vuoi informazioni per un gruppo? Scrivi direttamente all'organizzatore:",
+                    text = "Scegli se avviare una chat diretta nell'app oppure contattare l'agenzia telefonicamente:",
                     fontSize = 13.sp,
                     color = Color.DarkGray
-                )
-
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val topics = listOf("Info Date & Orari", "Tappe del Programma", "Gruppi / Famiglie", "Punto d'incontro")
-                    items(topics) { t ->
-                        OfferTypeChip(t, selectedTopic == t) { selectedTopic = t }
-                    }
-                }
-
-                OutlinedTextField(
-                    value = inquirySubject,
-                    onValueChange = { inquirySubject = it },
-                    label = { Text("Oggetto della richiesta") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
                 )
 
                 OutlinedTextField(
                     value = inquiryMessage,
                     onValueChange = { inquiryMessage = it },
-                    label = { Text("Il tuo messaggio per $agencyName") },
-                    placeholder = { Text("Scrivi qui la tua domanda per la data $currentSelectedLabel...") },
-                    minLines = 4,
-                    shape = RoundedCornerShape(12.dp),
+                    label = { Text("Scrivi un messaggio in chat") },
+                    placeholder = { Text("Ciao! Vorrei avere informazioni su questo pacchetto...") },
+                    minLines = 3,
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Button(
+                    onClick = {
+                        viewModel.startOrSendAgencyChatMessage(
+                            token = tokenUtente,
+                            tripId = currentTripId,
+                            messageText = inquiryMessage,
+                            onSuccess = {
+                                showContactAgencySheet = false
+                                contactSuccessMessage = "Chat avviata con $agencyName! Puoi continuare la conversazione nella tab 'Messaggi' in basso."
+                            }
+                        )
+                    },
+                    enabled = inquiryMessage.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = TripGreen),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                ) {
+                    Icon(Icons.Default.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Invia Messaggio in Chat", fontWeight = FontWeight.ExtraBold, color = Color.White, fontSize = 15.sp)
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -673,16 +679,12 @@ fun TripDetailScreen(
                     ) {
                         Icon(Icons.Default.Phone, contentDescription = null, tint = TripGreen, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Chiama Agenzia", color = TripBlack, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("Chiama Ora", color = TripBlack, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
 
                     OutlinedButton(
                         onClick = {
-                            val mailIntent = Intent(Intent.ACTION_SENDTO).apply {
-                                data = Uri.parse("mailto:agenzia@horizon.it")
-                                putExtra(Intent.EXTRA_SUBJECT, "$selectedTopic - ${trip.title}")
-                                putExtra(Intent.EXTRA_TEXT, inquiryMessage)
-                            }
+                            val mailIntent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:agenzia@horizon.it"))
                             context.startActivity(Intent.createChooser(mailIntent, "Invia email"))
                         },
                         shape = RoundedCornerShape(12.dp),
@@ -690,28 +692,11 @@ fun TripDetailScreen(
                     ) {
                         Icon(Icons.Default.Email, contentDescription = null, tint = TripGreen, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("App Email", color = TripBlack, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("Email", color = TripBlack, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
 
-                Button(
-                    onClick = {
-                        showContactAgencySheet = false
-                        contactSuccessMessage = "Il tuo messaggio su \"$selectedTopic\" è stato inviato a $agencyName! Riceverai riscontro al tuo indirizzo email (${viewModel.currentUserEmail.ifBlank { "account registrato" }})."
-                    },
-                    enabled = inquiryMessage.isNotBlank(),
-                    colors = ButtonDefaults.buttonColors(containerColor = TripGreen),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp)
-                ) {
-                    Icon(Icons.Default.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Invia Richiesta all'Agenzia", fontWeight = FontWeight.ExtraBold, color = Color.White, fontSize = 15.sp)
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
             }
         }
     }
