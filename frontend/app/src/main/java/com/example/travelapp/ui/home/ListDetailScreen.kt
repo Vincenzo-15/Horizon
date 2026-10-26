@@ -143,16 +143,29 @@ fun ListDetailScreen(
                             color = TripBlack
                         )
                         if (details != null) {
-                            Text(
-                                text = when (details.visibility) {
-                                    "PRIVATE" -> "🔒 Lista Privata"
-                                    "SHARED" -> "👥 Lista Condivisa con amici"
-                                    else -> "🌐 Lista Pubblica"
-                                },
-                                fontSize = 12.sp,
-                                color = TripGreen,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = when (details.visibility) {
+                                        "PRIVATE" -> Icons.Default.Lock
+                                        "SHARED" -> Icons.Default.Group
+                                        else -> Icons.Default.Public
+                                    },
+                                    contentDescription = null,
+                                    tint = TripGreen,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = when (details.visibility) {
+                                        "PRIVATE" -> "Lista Privata"
+                                        "SHARED" -> "Lista Condivisa con amici"
+                                        else -> "Lista Pubblica"
+                                    },
+                                    fontSize = 12.sp,
+                                    color = TripGreen,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
                 },

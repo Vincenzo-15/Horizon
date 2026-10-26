@@ -506,12 +506,12 @@ fun OrganizerDashboard(
                                     }
                                 }
                                 item {
-                                    OfferTypeChip("✈️ Viaggi", catalogFilter == "VIAGGI") {
+                                    OfferTypeChip("Viaggi", catalogFilter == "VIAGGI", Icons.Default.FlightTakeoff) {
                                         catalogFilter = "VIAGGI"
                                     }
                                 }
                                 item {
-                                    OfferTypeChip("🎟️ Attività", catalogFilter == "ATTIVITA") {
+                                    OfferTypeChip("Attività", catalogFilter == "ATTIVITA", Icons.Default.ConfirmationNumber) {
                                         catalogFilter = "ATTIVITA"
                                     }
                                 }

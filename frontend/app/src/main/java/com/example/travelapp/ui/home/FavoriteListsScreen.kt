@@ -428,17 +428,17 @@ fun FavoriteListsScreen(
                     }
                 }
                 item {
-                    OfferTypeChip("🔒 Private", selectedPrivacyFilter == "PRIVATE") {
+                    OfferTypeChip("Private", selectedPrivacyFilter == "PRIVATE", Icons.Default.Lock) {
                         selectedPrivacyFilter = "PRIVATE"
                     }
                 }
                 item {
-                    OfferTypeChip("👥 Condivise", selectedPrivacyFilter == "SHARED") {
+                    OfferTypeChip("Condivise", selectedPrivacyFilter == "SHARED", Icons.Default.Group) {
                         selectedPrivacyFilter = "SHARED"
                     }
                 }
                 item {
-                    OfferTypeChip("🌐 Pubbliche", selectedPrivacyFilter == "PUBLIC") {
+                    OfferTypeChip("Pubbliche", selectedPrivacyFilter == "PUBLIC", Icons.Default.Public) {
                         selectedPrivacyFilter = "PUBLIC"
                     }
                 }
@@ -506,9 +506,9 @@ fun FavoriteListsScreen(
                     else -> TripOrangeActivity
                 }
                 val badgeText = when (list.visibility) {
-                    "PRIVATE" -> "🔒 PRIVATA"
-                    "SHARED" -> "👥 CONDIVISA CON AMICI"
-                    else -> "🌐 PUBBLICA (LINK)"
+                    "PRIVATE" -> " PRIVATA"
+                    "SHARED" -> " CONDIVISA CON AMICI"
+                    else -> " PUBBLICA (LINK)"
                 }
 
                 // Verifica se l'utente loggato è il creatore della lista

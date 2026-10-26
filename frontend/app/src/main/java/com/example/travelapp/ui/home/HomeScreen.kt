@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -94,16 +95,16 @@ data class FamousDestination(
 data class TravelStyleCategory(
     val id: String,
     val label: String,
-    val emoji: String,
+    val icon: ImageVector,
     val keyword: String
 )
 
 val travelStyleCategories = listOf(
-    TravelStyleCategory("CULTURA", "Arte & Storia", "🏛️", "roma"),
-    TravelStyleCategory("FOOD", "Enogastronomia", "🍷", "degustazion"),
-    TravelStyleCategory("MARE", "Mare & Coste", "🌊", "amalfi"),
-    TravelStyleCategory("NATURA", "Alpi & Laghi", "🏔️", "losanna"),
-    TravelStyleCategory("METROPOLI", "Grandi Metropoli", "🌆", "tokyo")
+    TravelStyleCategory("CULTURA", "Arte & Storia", Icons.Default.AccountBalance, "roma"),
+    TravelStyleCategory("FOOD", "Enogastronomia", Icons.Default.WineBar, "degustazion"),
+    TravelStyleCategory("MARE", "Mare & Coste", Icons.Default.BeachAccess, "amalfi"),
+    TravelStyleCategory("NATURA", "Alpi & Laghi", Icons.Default.Terrain, "losanna"),
+    TravelStyleCategory("METROPOLI", "Grandi Metropoli", Icons.Default.LocationCity, "tokyo")
 )
 
 val famousDestinations = listOf(
@@ -522,27 +523,27 @@ fun HomeScreen(
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     item {
-                                        OfferTypeChip("✨ Scopri", !isSearchActive) {
+                                        OfferTypeChip("Scopri", !isSearchActive, Icons.Default.Explore) {
                                             searchQuery = ""
                                             selectedOfferType = "TUTTI"
                                             showFullCatalogMode = false
                                         }
                                     }
                                     item {
-                                        OfferTypeChip("✈️ Viaggi", selectedOfferType == "VIAGGI" && searchQuery.isEmpty()) {
+                                        OfferTypeChip("Viaggi", selectedOfferType == "VIAGGI" && searchQuery.isEmpty(), Icons.Default.FlightTakeoff) {
                                             searchQuery = ""
                                             selectedOfferType = "VIAGGI"
                                         }
                                     }
                                     item {
-                                        OfferTypeChip("🎟️ Attività in Giornata", selectedOfferType == "ATTIVITA" && searchQuery.isEmpty()) {
+                                        OfferTypeChip("Attività in Giornata", selectedOfferType == "ATTIVITA" && searchQuery.isEmpty(), Icons.Default.ConfirmationNumber) {
                                             searchQuery = ""
                                             selectedOfferType = "ATTIVITA"
                                         }
                                     }
                                     items(travelStyleCategories) { styleCat ->
                                         val isSelected = searchQuery.equals(styleCat.keyword, ignoreCase = true)
-                                        OfferTypeChip("${styleCat.emoji} ${styleCat.label}", isSelected) {
+                                        OfferTypeChip(styleCat.label, isSelected, styleCat.icon) {
                                             selectedOfferType = "TUTTI"
                                             searchQuery = if (isSelected) "" else styleCat.keyword
                                         }
@@ -596,7 +597,7 @@ fun HomeScreen(
                                 if (topRatedTrips.isNotEmpty()) {
                                     item {
                                         SectionHeader(
-                                            title = "🏆 Scelte dai Viaggiatori 2026",
+                                            title = " Scelte dai Viaggiatori 2026",
                                             subtitle = "Le esperienze con le recensioni più alte della community Horizon"
                                         )
                                         Spacer(modifier = Modifier.height(12.dp))
@@ -608,7 +609,7 @@ fun HomeScreen(
                                             items(topRatedTrips) { trip ->
                                                 SpotlightExperienceCard(
                                                     trip = trip,
-                                                    badgeText = "⭐ TOP RATED • ${trip.averageRating}",
+                                                    badgeText = " TOP RATED • ${trip.averageRating}",
                                                     onClick = {
                                                         viewModel.markTripAsViewed(trip)
                                                         onTripClick(trip.id)
@@ -660,7 +661,7 @@ fun HomeScreen(
                                         ) {
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text(
-                                                    text = "🎟️ Attività & Tour in Giornata",
+                                                    text = " Attività & Tour in Giornata",
                                                     fontSize = 21.sp,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = TripBlack
@@ -684,7 +685,7 @@ fun HomeScreen(
                                             items(dailyActivities) { activity ->
                                                 SpotlightExperienceCard(
                                                     trip = activity,
-                                                    badgeText = "🎟️ IN GIORNATA",
+                                                    badgeText = " IN GIORNATA",
                                                     onClick = {
                                                         viewModel.markTripAsViewed(activity)
                                                         onTripClick(activity.id)
@@ -708,7 +709,7 @@ fun HomeScreen(
                                         ) {
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text(
-                                                    text = "✈️ Grandi Viaggi Organizzati",
+                                                    text = " Grandi Viaggi Organizzati",
                                                     fontSize = 21.sp,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = TripBlack
@@ -1055,8 +1056,8 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OfferTypeChip("Tutti", tempType == "TUTTI") { tempType = "TUTTI" }
-                    OfferTypeChip("✈️ Viaggi", tempType == "VIAGGI") { tempType = "VIAGGI" }
-                    OfferTypeChip("🎟️ Attività", tempType == "ATTIVITA") { tempType = "ATTIVITA" }
+                    OfferTypeChip(" Viaggi", tempType == "VIAGGI") { tempType = "VIAGGI" }
+                    OfferTypeChip("️ Attività", tempType == "ATTIVITA") { tempType = "ATTIVITA" }
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))
@@ -1118,7 +1119,7 @@ fun HomeScreen(
                 Text("Ordina risultati per", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TripBlack)
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OfferTypeChip("⭐ Più votati", tempSort == "RATING") { tempSort = "RATING" }
+                    OfferTypeChip(" Più votati", tempSort == "RATING") { tempSort = "RATING" }
                     OfferTypeChip("€ Crescente", tempSort == "PRICE_ASC") { tempSort = "PRICE_ASC" }
                     OfferTypeChip("€ Decrescente", tempSort == "PRICE_DESC") { tempSort = "PRICE_DESC" }
                 }
@@ -1476,20 +1477,38 @@ fun MyReservationsSection(
 }
 
 @Composable
-fun OfferTypeChip(label: String, selected: Boolean, onClick: () -> Unit) {
+fun OfferTypeChip(
+    label: String,
+    selected: Boolean,
+    icon: ImageVector? = null,
+    onClick: () -> Unit
+) {
     Surface(
         shape = RoundedCornerShape(50),
         color = if (selected) TripGreen else Color.White,
         shadowElevation = if (selected) 4.dp else 1.dp,
         modifier = Modifier.clickable { onClick() }
     ) {
-        Text(
-            text = label,
-            color = if (selected) Color.White else TripBlack,
-            fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (selected) Color.White else TripGreen,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            Text(
+                text = label,
+                color = if (selected) Color.White else TripBlack,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            )
+        }
     }
 }
 
@@ -1906,8 +1925,8 @@ fun CityDetailScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OfferTypeChip("Tutti", cityFilter == "TUTTI") { cityFilter = "TUTTI" }
-                OfferTypeChip("✈️ Viaggi", cityFilter == "VIAGGI") { cityFilter = "VIAGGI" }
-                OfferTypeChip("🎟️ Attività", cityFilter == "ATTIVITA") { cityFilter = "ATTIVITA" }
+                OfferTypeChip(" Viaggi", cityFilter == "VIAGGI") { cityFilter = "VIAGGI" }
+                OfferTypeChip(" Attività", cityFilter == "ATTIVITA") { cityFilter = "ATTIVITA" }
             }
             Spacer(modifier = Modifier.height(12.dp))
         }

@@ -44,7 +44,7 @@ import java.util.Locale
 data class EditableStepDraft(
     val title: String = "",
     val duration: String = "",
-    val ticketInfo: String = "🎟️ Biglietto incluso",
+    val ticketInfo: String = " Biglietto incluso",
     val description: String = ""
 )
 
@@ -62,7 +62,7 @@ fun encodeOverviewAndSteps(overview: String, steps: List<EditableStepDraft>, isA
             if (isActivity) "45 min" else "Giorno ${idx + 1}"
         }.replace("||", " ")
         val safeTicket = step.ticketInfo.trim().ifEmpty {
-            "📍 Tappa inclusa"
+            " Tappa inclusa"
         }.replace("||", " ")
         val safeDesc = step.description.trim().ifEmpty {
             "Visita guidata e tempo dedicato all'esplorazione della tappa."
@@ -99,13 +99,13 @@ fun CreateTripScreen(
             EditableStepDraft(
                 title = "",
                 duration = "1 ora",
-                ticketInfo = "🎟️ Biglietto salta-fila incluso",
+                ticketInfo = " Biglietto salta-fila incluso",
                 description = ""
             ),
             EditableStepDraft(
                 title = "",
                 duration = "45 min",
-                ticketInfo = "📍 Visita guidata inclusa",
+                ticketInfo = " Visita guidata inclusa",
                 description = ""
             )
         )
@@ -296,8 +296,15 @@ fun CreateTripScreen(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Icon(
+                            imageVector = Icons.Default.FlightTakeoff,
+                            contentDescription = null,
+                            tint = if (!isActivity) Color.White else TripGreen,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "✈️ Viaggio Multi-Giorno",
+                            text = "Viaggio Multi-Giorno",
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 13.sp,
                             color = if (!isActivity) Color.White else TripBlack
@@ -320,8 +327,15 @@ fun CreateTripScreen(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Icon(
+                            imageVector = Icons.Default.ConfirmationNumber,
+                            contentDescription = null,
+                            tint = if (isActivity) Color.White else TripOrangeActivity,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "🎟️ Attività in Giornata",
+                            text = "Attività in Giornata",
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 13.sp,
                             color = if (isActivity) Color.White else TripBlack
@@ -478,19 +492,19 @@ fun CreateTripScreen(
             val inclusionPresets = remember(isActivity) {
                 if (isActivity) {
                     listOf(
-                        "🎟️ Biglietto salta-fila incluso",
-                        "📍 Sosta con guida ufficiale",
-                        "🍷 Degustazione inclusa",
-                        "📸 Sosta panoramica",
-                        "⛴️ Trasporto / Barca incluso"
+                        "Biglietto salta-fila incluso",
+                        "Sosta con guida ufficiale",
+                        "Degustazione inclusa",
+                        "Sosta panoramica",
+                        "Trasporto / Barca incluso"
                     )
                 } else {
                     listOf(
-                        "🏨 Hotel + Colazione inclusi",
-                        "🎟️ Ingressi e guida inclusi",
-                        "🍷 Cena tipica inclusa",
-                        "🚄 Trasferimenti inclusi",
-                        "✈️ Assistenza coordinatore"
+                        "Hotel + Colazione inclusi",
+                        "Ingressi e guida inclusi",
+                        "Cena tipica inclusa",
+                        "Trasferimenti inclusi",
+                        "Assistenza coordinatore"
                     )
                 }
             }
@@ -661,7 +675,7 @@ fun CreateTripScreen(
                         EditableStepDraft(
                             title = "",
                             duration = if (isActivity) "45 min" else "Giorno $nextNum",
-                            ticketInfo = if (isActivity) "📍 Sosta con guida ufficiale" else "🎟️ Ingressi e guida inclusi",
+                            ticketInfo = if (isActivity) "Sosta con guida ufficiale" else "Ingressi e guida inclusi",
                             description = ""
                         )
                     )

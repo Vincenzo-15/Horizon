@@ -177,7 +177,7 @@ fun parseTripDatabaseContent(trip: TripDTO, isActivity: Boolean): ParsedTripCont
                     stepNumber = index + 1,
                     title = fields.getOrNull(0)?.trim().orEmpty(),
                     duration = fields.getOrNull(1)?.trim().orEmpty().ifEmpty { if (isActivity) "45 min" else "Giorno ${index + 1}" },
-                    ticketInfo = fields.getOrNull(2)?.trim().orEmpty().ifEmpty { "📍 Tappa inclusa" },
+                    ticketInfo = fields.getOrNull(2)?.trim().orEmpty().ifEmpty { "Tappa inclusa" },
                     description = fields.getOrNull(3)?.trim().orEmpty()
                 )
             }
@@ -192,7 +192,7 @@ fun parseTripDatabaseContent(trip: TripDTO, isActivity: Boolean): ParsedTripCont
             stepNumber = 1,
             title = if (isActivity) "Incontro e Svolgimento Attività a $loc" else "Partenza e Programma a $loc",
             duration = if (isActivity) "2 ore" else "${trip.startDate} → ${trip.endDate}",
-            ticketInfo = "🎟️ Esperienza completa inclusa",
+            ticketInfo = "Esperienza completa inclusa",
             description = contentWithoutReviews.ifBlank { "Accoglienza partecipanti e svolgimento dell'esperienza a $loc." }
         )
     )
@@ -889,9 +889,9 @@ fun TripDetailScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OfferTypeChip("💳 Carta", selectedPaymentMethod == "CARD") { selectedPaymentMethod = "CARD" }
-                    OfferTypeChip("🅿️ PayPal", selectedPaymentMethod == "PAYPAL") { selectedPaymentMethod = "PAYPAL" }
-                    OfferTypeChip("📱 Google Pay", selectedPaymentMethod == "GPAY") { selectedPaymentMethod = "GPAY" }
+                    OfferTypeChip("Carta", selectedPaymentMethod == "CARD") { selectedPaymentMethod = "CARD" }
+                    OfferTypeChip("PayPal", selectedPaymentMethod == "PAYPAL") { selectedPaymentMethod = "PAYPAL" }
+                    OfferTypeChip("Google Pay", selectedPaymentMethod == "GPAY") { selectedPaymentMethod = "GPAY" }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -1221,7 +1221,7 @@ fun TripDetailScreen(
                             EditableStepDraft(
                                 title = "",
                                 duration = if (isActivity) "45 min" else "Giorno ${editStepsList.size + 1}",
-                                ticketInfo = "📍 Tappa inclusa",
+                                ticketInfo = "Tappa inclusa",
                                 description = ""
                             )
                         )
@@ -1652,13 +1652,24 @@ fun TripDetailScreen(
                                 .align(Alignment.BottomStart)
                                 .padding(bottom = 42.dp, start = 24.dp)
                         ) {
-                            Text(
-                                text = if (isActivity) "🎟️ ATTIVITÀ / ESCURSIONE IN GIORNATA" else "✈️ PACCHETTO VIAGGIO PIÙ GIORNI",
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (isActivity) Icons.Default.ConfirmationNumber else Icons.Default.FlightTakeoff,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (isActivity) "ATTIVITÀ / ESCURSIONE IN GIORNATA" else "PACCHETTO VIAGGIO PIÙ GIORNI",
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
                         }
 
                         Surface(
@@ -1894,19 +1905,27 @@ fun TripDetailScreen(
                                                 color = TripBlack
                                             )
                                             if (calendarMonth in 5..7) {
-                                                Text(
-                                                    text = "☀️ Alta Stagione Estiva",
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = TripOrangeActivity
-                                                )
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(Icons.Default.WbSunny, contentDescription = null, tint = TripOrangeActivity, modifier = Modifier.size(12.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "Alta Stagione Estiva",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = TripOrangeActivity
+                                                    )
+                                                }
                                             } else if (calendarMonth == 11) {
-                                                Text(
-                                                    text = "🎄 Festività Invernali",
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = TripOrangeActivity
-                                                )
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(Icons.Default.AcUnit, contentDescription = null, tint = TripOrangeActivity, modifier = Modifier.size(12.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "Festività Invernali",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = TripOrangeActivity
+                                                    )
+                                                }
                                             }
                                         }
 
@@ -2133,7 +2152,7 @@ fun TripDetailScreen(
                                                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                                                         ) {
                                                             Text(
-                                                                text = if (agencySpotsSavedFeedback) "✓ Aggiornato" else "Salva Posti Data",
+                                                            text = if (agencySpotsSavedFeedback) "Aggiornato" else "Salva Posti Data",
                                                                 fontSize = 12.sp,
                                                                 fontWeight = FontWeight.ExtraBold,
                                                                 color = Color.White
@@ -2264,7 +2283,7 @@ fun TripDetailScreen(
                                                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                                                     ) {
                                                         Text(
-                                                            text = if (agencySpotsSavedFeedback) "✓ Aggiornato" else "Salva Posti Turno",
+                                                            text = if (agencySpotsSavedFeedback) "Aggiornato" else "Salva Posti Turno",
                                                             fontSize = 12.sp,
                                                             fontWeight = FontWeight.ExtraBold,
                                                             color = Color.White
@@ -2522,13 +2541,29 @@ fun TripDetailScreen(
                                                     color = TripGreen.copy(alpha = 0.1f),
                                                     shape = RoundedCornerShape(6.dp)
                                                 ) {
-                                                    Text(
-                                                        text = step.ticketInfo,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = TripDarkGreen,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                                    )
+                                                    val cleanTicketText = step.ticketInfo
+                                                        .replace(Regex("^[^a-zA-Z0-9À-ÿ]+"), "")
+                                                        .trim()
+                                                        .ifEmpty { step.ticketInfo }
+
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.CheckCircle,
+                                                            contentDescription = null,
+                                                            tint = TripDarkGreen,
+                                                            modifier = Modifier.size(13.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(5.dp))
+                                                        Text(
+                                                            text = cleanTicketText,
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = TripDarkGreen
+                                                        )
+                                                    }
                                                 }
 
                                                 AnimatedVisibility(visible = isStepExpanded) {
