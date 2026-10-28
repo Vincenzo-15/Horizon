@@ -39,17 +39,28 @@ import com.example.travelapp.viewmodel.HomeViewModel
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
+//fun isActivityOrExcursion(trip: TripDTO): Boolean {
+//    val sameDay = !trip.startDate.isNullOrBlank() && trip.startDate == trip.endDate
+//    val text = "${trip.title} ${trip.description ?: ""}".lowercase()
+//
+//    val hasActivityKeyword = text.contains("attività") ||
+//            text.contains("attivita") ||
+//            text.contains("escursion") ||
+//            text.contains("tour") ||
+//            text.contains("visita") ||
+//            text.contains("degustazion") ||
+//            text.contains("biglietto")
+//    return sameDay || hasActivityKeyword
+//}
+
 fun isActivityOrExcursion(trip: TripDTO): Boolean {
-    val sameDay = !trip.startDate.isNullOrBlank() && trip.startDate == trip.endDate
-    val text = "${trip.title} ${trip.description ?: ""}".lowercase()
-    val hasActivityKeyword = text.contains("attività") ||
-            text.contains("attivita") ||
-            text.contains("escursion") ||
-            text.contains("tour") ||
-            text.contains("visita") ||
-            text.contains("degustazion") ||
-            text.contains("biglietto")
-    return sameDay || hasActivityKeyword
+    if (!trip.startDate.isNullOrBlank() && !trip.endDate.isNullOrBlank()) {
+        return trip.startDate == trip.endDate
+    }
+    val titleLower = trip.title.lowercase()
+    return titleLower.contains("attività") ||
+            titleLower.contains("attivita") ||
+            titleLower.contains("escursion")
 }
 
 fun buildIcsContent(reservation: ReservationDTO, trip: TripDTO?): String {
@@ -472,22 +483,22 @@ fun HomeScreen(
                                                 else "\"$searchQuery\"",
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 15.sp,
-                                                color = TripBlack,
+                                                color = Color.Gray,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            val subSummary = buildList {
-                                                if (selectedOfferType != "TUTTI") add(if (selectedOfferType == "VIAGGI") "Solo Viaggi" else "Solo Attività")
-                                                if (maxPriceFilter != null) add("Max €${maxPriceFilter!!.toInt()}")
-                                                if (minParticipants > 1) add("$minParticipants+ posti")
-                                            }.joinToString(" • ").ifEmpty { "Ovunque • Qualsiasi data • Prezzi dinamici" }
-
-                                            Text(
-                                                text = subSummary,
-                                                fontSize = 13.sp,
-                                                color = if (isSearchActive) TripGreen else Color.Gray,
-                                                fontWeight = if (isSearchActive) FontWeight.SemiBold else FontWeight.Normal
-                                            )
+//                                            val subSummary = buildList {
+//                                                if (selectedOfferType != "TUTTI") add(if (selectedOfferType == "VIAGGI") "Solo Viaggi" else "Solo Attività")
+//                                                if (maxPriceFilter != null) add("Max €${maxPriceFilter!!.toInt()}")
+//                                                if (minParticipants > 1) add("$minParticipants+ posti")
+//                                            }.joinToString(" • ").ifEmpty { "Ovunque • Qualsiasi data • Prezzi dinamici" }
+//
+//                                            Text(
+//                                                text = subSummary,
+//                                                fontSize = 13.sp,
+//                                                color = if (isSearchActive) TripGreen else Color.Gray,
+//                                                fontWeight = if (isSearchActive) FontWeight.SemiBold else FontWeight.Normal
+//                                            )
                                         }
                                         if (isSearchActive) {
                                             IconButton(onClick = {
@@ -1017,7 +1028,7 @@ fun HomeScreen(
                 OutlinedTextField(
                     value = tempQuery,
                     onValueChange = { tempQuery = it },
-                    label = { Text("Destinazione o esperienza (es. Roma, Losanna, Tour)") },
+                    label = { Text("Destinazione o esperienza") },
                     leadingIcon = { Icon(Icons.Default.Place, contentDescription = null, tint = TripGreen) },
                     trailingIcon = {
                         if (tempQuery.isNotEmpty()) {
@@ -1031,26 +1042,6 @@ fun HomeScreen(
                     singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val quickTags = listOf("Roma", "Losanna", "Parigi", "Tokyo", "Amalfi", "Tour")
-                    items(quickTags) { tag ->
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = if (tempQuery.equals(tag, ignoreCase = true)) TripGreen.copy(alpha = 0.15f) else TripWarmBg,
-                            modifier = Modifier.clickable { tempQuery = tag }
-                        ) {
-                            Text(
-                                text = tag,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (tempQuery.equals(tag, ignoreCase = true)) TripDarkGreen else TripBlack,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                            )
-                        }
-                    }
-                }
-
                 Spacer(modifier = Modifier.height(18.dp))
                 Text("Tipologia di esperienza", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TripBlack)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -1060,27 +1051,6 @@ fun HomeScreen(
                     OfferTypeChip("️ Attività", tempType == "ATTIVITA") { tempType = "ATTIVITA" }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Budget massimo a persona", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TripBlack)
-                    Text(
-                        text = if (sliderPrice >= 3000f) "Qualsiasi prezzo" else "Fino a €${sliderPrice.roundToInt()}",
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 14.sp,
-                        color = TripGreen
-                    )
-                }
-                Slider(
-                    value = sliderPrice,
-                    onValueChange = { sliderPrice = it },
-                    valueRange = 50f..3000f,
-                    steps = 28,
-                    colors = SliderDefaults.colors(thumbColor = TripGreen, activeTrackColor = TripGreen)
-                )
 
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(

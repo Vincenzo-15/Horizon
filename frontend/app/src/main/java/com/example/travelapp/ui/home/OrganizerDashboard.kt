@@ -56,7 +56,8 @@ data class ResolvedReceiptInfo(
     val travelerEmail: String,
     val paymentMethod: String,
     val selectedDateSlot: String,
-    val unitPrice: Double
+    val unitPrice: Double,
+    val participantsList: String
 )
 
 fun resolveReceiptDetails(
@@ -93,6 +94,7 @@ fun resolveReceiptDetails(
         ?: order.reservationDate.take(10)
 
     val unitPrice = if (order.bookedSpots > 0) order.totalPaid / order.bookedSpots else order.totalPaid
+    val participantsList = prefs.getString("participants_list_${order.id}", null) ?: prefs.getString("last_participants_list_trip_${order.tripId}", null) ?: travelerName
 
     return ResolvedReceiptInfo(
         receiptCode = "HRZ-2026-${String.format(Locale.US, "%04d", order.id)}",
@@ -100,7 +102,8 @@ fun resolveReceiptDetails(
         travelerEmail = travelerEmail,
         paymentMethod = paymentMethod,
         selectedDateSlot = selectedSlot,
-        unitPrice = unitPrice
+        unitPrice = unitPrice,
+        participantsList = participantsList
     )
 }
 
@@ -846,6 +849,7 @@ fun OrganizerDashboard(
                             letterSpacing = 0.8.sp
                         )
                         ReceiptDetailRow("Pacchetto / Attività:", order.tripTitle, isBold = true)
+                        ReceiptDetailRow("Partecipanti:", receiptInfo.participantsList)
                         ReceiptDetailRow("Data / Turno scelto:", receiptInfo.selectedDateSlot)
                         ReceiptDetailRow("Posti riservati:", "${order.bookedSpots} partecipanti")
 

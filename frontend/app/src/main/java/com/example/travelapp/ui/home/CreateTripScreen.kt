@@ -89,6 +89,11 @@ fun CreateTripScreen(
     var price by remember { mutableStateOf("") }
     var spots by remember { mutableStateOf("") }
 
+    var selectedTransportType by remember { mutableStateOf("Treno Alta Velocità A/R") }
+    var transportDetails by remember { mutableStateOf("Transfer stazione/aeroporto - hotel incluso") }
+    var hotelName by remember { mutableStateOf("Boutique Hotel 4★ Centrale") }
+    var selectedBoardType by remember { mutableStateOf("Colazione inclusa (B&B)") }
+
     var startDate by remember { mutableStateOf("") }
     var endDate by remember { mutableStateOf("") }
     var showDatePicker by remember { mutableStateOf(false) }
@@ -445,6 +450,106 @@ fun CreateTripScreen(
                 )
             }
 
+            if (!isActivity) {
+                val transportPresets = listOf(
+                    "Volo A/R Incluso",
+                    "Treno Alta Velocità A/R",
+                    "Bus Gran Turismo",
+                    "Nave / Traghetto A/R"
+                )
+                val boardPresets = listOf(
+                    "Colazione inclusa (B&B)",
+                    "Mezza Pensione",
+                    "Pensione Completa",
+                    "All Inclusive"
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = TripWarmBg,
+                    border = BorderStroke(1.dp, TripGreen.copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.FlightTakeoff, contentDescription = null, tint = TripGreen, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "Logistica, Trasporto & Ospitalità",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = TripBlack
+                                )
+                                Text(
+                                    text = "Specifica i servizi compresi nel pacchetto multi-giorno",
+                                    fontSize = 11.sp,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+
+                        Text("Mezzo di Trasporto principale:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TripBlack)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(transportPresets) { item ->
+                                OfferTypeChip(
+                                    label = item,
+                                    selected = selectedTransportType == item,
+                                    icon = Icons.Default.FlightTakeoff
+                                ) {
+                                    selectedTransportType = item
+                                }
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = transportDetails,
+                            onValueChange = { transportDetails = it },
+                            label = { Text("Dettagli Operativi Trasporto (Transfer / Bagaglio)") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
+
+                        Text("Struttura Ricettiva e Trattamento:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TripBlack)
+                        OutlinedTextField(
+                            value = hotelName,
+                            onValueChange = { hotelName = it },
+                            label = { Text("Struttura Alberghiera (Nome e Categoria)") },
+                            leadingIcon = { Icon(Icons.Default.Hotel, contentDescription = null, tint = TripGreen) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(boardPresets) { board ->
+                                OfferTypeChip(
+                                    label = board,
+                                    selected = selectedBoardType == board,
+                                    icon = Icons.Default.Restaurant
+                                ) {
+                                    selectedBoardType = board
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             OutlinedTextField(
                 value = overview,
                 onValueChange = { overview = it },
@@ -703,8 +808,14 @@ fun CreateTripScreen(
             Button(
                 onClick = {
                     val finalEndDate = if (isActivity) startDate else endDate
+                    val baseOverview = overview.ifBlank { "Esperienza ufficiale organizzata a $location." }
+                    val overviewWithLogistics = if (!isActivity) {
+                        "@@META@@${hotelName.trim()}||$selectedBoardType||$selectedTransportType • ${transportDetails.trim()}\n$baseOverview"
+                    } else {
+                        baseOverview
+                    }
                     val combinedDescriptionWithSteps = encodeOverviewAndSteps(
-                        overview = overview.ifBlank { "Esperienza ufficiale organizzata a $location." },
+                        overview = overviewWithLogistics,
                         steps = itinerarySteps,
                         isActivity = isActivity
                     )

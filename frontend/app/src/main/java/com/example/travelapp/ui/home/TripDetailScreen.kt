@@ -90,6 +90,9 @@ data class ExperienceReview(
 
 data class ParsedTripContent(
     val overview: String,
+    val hotelName: String,
+    val boardType: String,
+    val transportInfo: String,
     val steps: List<ItineraryStepItem>,
     val reviews: List<ExperienceReview>,
     val rawReviewBlocks: String
@@ -144,12 +147,50 @@ fun parseTripDatabaseContent(trip: TripDTO, isActivity: Boolean): ParsedTripCont
     val fullRaw = trip.description ?: ""
     val loc = trip.location ?: "Destinazione"
 
-    // 1. Separa i blocchi @@REVIEW@@ reali salvati nel DB
+    val defaultHotel = when {
+        loc.contains("roma", true) -> "Boutique Hotel 4 Centro Storico"
+        loc.contains("losanna", true) -> "Hotel 4 Ouchy Vista Lago Lemano"
+        loc.contains("parigi", true) -> "Hotel 4 Quartiere Storico Le Marais"
+        loc.contains("amalfi", true) -> "Hotel Panoramico 4 Costiera Amalfitana"
+        loc.contains("tokyo", true) -> "Hotel 4 Shinjuku + Ryokan Tradizionale"
+        else -> "Hotel 4 Selezionato Horizon"
+    }
+    val defaultBoard = when {
+        loc.contains("amalfi", true) || loc.contains("tokyo", true) -> "Mezza Pensione + Degustazioni"
+        else -> "Colazione inclusa (B&B) + Cena di Benvenuto"
+    }
+    val defaultTransport = when {
+        loc.contains("roma", true) -> "Treno Alta Velocità A/R • Transfer Hotel incluso"
+        loc.contains("losanna", true) -> "Treno EuroCity A/R • Crociera Battello inclusa"
+        loc.contains("parigi", true) -> "Volo Diretto A/R • Bagaglio + Transfer Privato"
+        loc.contains("amalfi", true) -> "Treno Alta Velocità A/R • Gozzo Privato Capri"
+        loc.contains("tokyo", true) -> "Volo Intercontinentale A/R • Japan Rail Pass Shinkansen"
+        else -> "Trasporto A/R + Transfer in loco inclusi"
+    }
+
     val reviewSplits = fullRaw.split("@@REVIEW@@")
-    val contentWithoutReviews = reviewSplits.firstOrNull()?.trim().orEmpty()
+    var contentWithoutReviews = reviewSplits.firstOrNull()?.trim().orEmpty()
     val rawReviewBlocks = if (reviewSplits.size > 1) {
         reviewSplits.drop(1).joinToString("\n") { "@@REVIEW@@${it.trim()}" }
     } else ""
+
+    var extractedHotel = defaultHotel
+    var extractedBoard = defaultBoard
+    var extractedTransport = defaultTransport
+
+    if (contentWithoutReviews.startsWith("@@META@@")) {
+        val firstLine = contentWithoutReviews.substringBefore("\n").removePrefix("@@META@@")
+        val metaParts = firstLine.split("||")
+        if (metaParts.size >= 3) {
+            extractedHotel = metaParts[0].trim().ifEmpty { defaultHotel }
+            extractedBoard = metaParts[1].trim().ifEmpty { defaultBoard }
+            extractedTransport = metaParts[2].trim().ifEmpty { defaultTransport }
+        } else if (metaParts.size == 2) {
+            extractedHotel = metaParts[0].trim().ifEmpty { defaultHotel }
+            extractedTransport = metaParts[1].trim().ifEmpty { defaultTransport }
+        }
+        contentWithoutReviews = contentWithoutReviews.substringAfter("\n", "").trim()
+    }
 
     val parsedReviews = reviewSplits.drop(1).mapNotNull { block ->
         val fields = block.trim().split("||")
@@ -161,9 +202,8 @@ fun parseTripDatabaseContent(trip: TripDTO, isActivity: Boolean): ParsedTripCont
                 comment = fields[3].trim()
             )
         } else null
-    }.reversed() // Mostra le più recenti in alto
+    }.reversed()
 
-    // 2. Separa la panoramica dai blocchi @@STEP@@
     if (contentWithoutReviews.contains("@@STEP@@")) {
         val parts = contentWithoutReviews.split("@@STEP@@")
         val cleanOverview = parts.firstOrNull()?.trim().orEmpty().ifEmpty {
@@ -183,7 +223,7 @@ fun parseTripDatabaseContent(trip: TripDTO, isActivity: Boolean): ParsedTripCont
             }
         }
         if (parsedSteps.isNotEmpty()) {
-            return ParsedTripContent(cleanOverview, parsedSteps, parsedReviews, rawReviewBlocks)
+            return ParsedTripContent(cleanOverview, extractedHotel, extractedBoard, extractedTransport, parsedSteps, parsedReviews, rawReviewBlocks)
         }
     }
 
@@ -198,12 +238,14 @@ fun parseTripDatabaseContent(trip: TripDTO, isActivity: Boolean): ParsedTripCont
     )
     return ParsedTripContent(
         overview = contentWithoutReviews.ifBlank { "Esperienza curata a $loc." },
+        hotelName = extractedHotel,
+        boardType = extractedBoard,
+        transportInfo = extractedTransport,
         steps = defaultStep,
         reviews = parsedReviews,
         rawReviewBlocks = rawReviewBlocks
     )
 }
-
 fun buildMultiDayTripOptions(
     context: Context,
     trip: TripDTO,
@@ -380,6 +422,9 @@ fun TripDetailScreen(
     var editPrice by remember { mutableStateOf("") }
     var editLocation by remember { mutableStateOf("") }
     var editAvailableSpots by remember { mutableStateOf("") }
+    var editHotelName by remember { mutableStateOf("") }
+    var editBoardType by remember { mutableStateOf("") }
+    var editTransportInfo by remember { mutableStateOf("") }
     val editStepsList = remember { mutableStateListOf<EditableStepDraft>() }
 
     LaunchedEffect(currentTripId) {
@@ -398,10 +443,9 @@ fun TripDetailScreen(
     val isOrganizerRole = ruoloUtente == "ORGANIZZATORE"
     val accentColor = if (isActivity) TripOrangeActivity else TripGreen
 
-    // Legge dal DB la panoramica, le tappe e le VERE recensioni salvate nel database
     val parsedContent = remember(trip, isActivity) {
         if (trip != null) parseTripDatabaseContent(trip, isActivity)
-        else ParsedTripContent("", emptyList(), emptyList(), "")
+        else ParsedTripContent("", "", "", "", emptyList(), emptyList(), "")
     }
     val cleanOverviewText = parsedContent.overview
     val itinerarySteps = parsedContent.steps
@@ -568,6 +612,9 @@ fun TripDetailScreen(
             editPrice = trip.price.toString()
             editLocation = trip.location ?: ""
             editAvailableSpots = trip.availableSpots.toString()
+            editHotelName = parsedContent.hotelName
+            editBoardType = parsedContent.boardType
+            editTransportInfo = parsedContent.transportInfo
             editStepsList.clear()
             itinerarySteps.forEach { s ->
                 editStepsList.add(
@@ -795,6 +842,12 @@ fun TripDetailScreen(
         var cardExpiry by remember { mutableStateOf("08/29") }
         var cardCvv by remember { mutableStateOf("482") }
         val totalAmount = currentUnitPrice * spotsToBook
+        val companionNames = remember(spotsToBook) {
+            mutableStateListOf<String>().apply {
+                repeat((spotsToBook - 1).coerceAtLeast(0)) { add("") }
+            }
+        }
+        val allCompanionNamesFilled = companionNames.all { it.isNotBlank() }
 
         val paymentLabelForReceipt = when (selectedPaymentMethod) {
             "CARD" -> "Carta Visa/Mastercard (•••• ${cardNumber.takeLast(4)})"
@@ -884,6 +937,38 @@ fun TripDetailScreen(
                     }
                 }
 
+                if (spotsToBook > 1) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Nominativi Partecipanti ($spotsToBook posti)",
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 14.sp,
+                        color = TripBlack
+                    )
+                    Text(
+                        text = "Partecipante #1 (Titolare): ${viewModel.currentUserName}",
+                        fontSize = 12.sp,
+                        color = TripDarkGreen,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    companionNames.forEachIndexed { index, nameVal ->
+                        OutlinedTextField(
+                            value = nameVal,
+                            onValueChange = { companionNames[index] = it },
+                            label = { Text("Nome e Cognome Partecipante #${index + 2}") },
+                            placeholder = { Text("es. Luca Verdi") },
+                            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = TripGreen) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(18.dp))
                 Text("Seleziona metodo di pagamento", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TripBlack)
                 Spacer(modifier = Modifier.height(10.dp))
@@ -966,6 +1051,7 @@ fun TripDetailScreen(
                     onClick = {
                         showMockPaymentSheet = false
                         wantToBookAgain = false
+                        val fullParticipantsList = listOf(viewModel.currentUserName) + companionNames.filter { it.isNotBlank() }
                         viewModel.bookTrip(
                             context = context,
                             token = tokenUtente,
@@ -975,6 +1061,7 @@ fun TripDetailScreen(
                             selectedSlotLabel = currentSelectedLabel,
                             paymentMethodLabel = paymentLabelForReceipt,
                             unitPricePaid = currentUnitPrice,
+                            participantsNames = fullParticipantsList.joinToString(", "),
                             onDateBookedSuccess = { inventoryRefreshTrigger++ }
                         )
                     },
@@ -1139,6 +1226,36 @@ fun TripDetailScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                if (!isActivity) {
+                    OutlinedTextField(
+                        value = editHotelName,
+                        onValueChange = { editHotelName = it },
+                        label = { Text("Struttura Alberghiera") },
+                        leadingIcon = { Icon(Icons.Default.Hotel, contentDescription = null, tint = TripGreen) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editBoardType,
+                        onValueChange = { editBoardType = it },
+                        label = { Text("Trattamento (es. Colazione inclusa / Mezza Pensione)") },
+                        leadingIcon = { Icon(Icons.Default.Restaurant, contentDescription = null, tint = TripGreen) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editTransportInfo,
+                        onValueChange = { editTransportInfo = it },
+                        label = { Text("Mezzo di Trasporto e Transfer") },
+                        leadingIcon = { Icon(Icons.Default.FlightTakeoff, contentDescription = null, tint = TripGreen) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
                 HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
                 Text(
                     text = "Tappe Step-by-Step dell'Esperienza",
@@ -1236,7 +1353,10 @@ fun TripDetailScreen(
 
                 Button(
                     onClick = {
-                        val encodedSteps = encodeOverviewAndSteps(editOverview, editStepsList, isActivity)
+                        val overviewToEncode = if (!isActivity) {
+                            "@@META@@${editHotelName.trim()}||${editBoardType.trim()}||${editTransportInfo.trim()}\n${editOverview.trim()}"
+                        } else editOverview
+                        val encodedSteps = encodeOverviewAndSteps(overviewToEncode, editStepsList, isActivity)
                         val finalDescriptionWithReviews = if (parsedContent.rawReviewBlocks.isNotBlank()) {
                             "$encodedSteps\n${parsedContent.rawReviewBlocks}"
                         } else encodedSteps
@@ -1822,6 +1942,99 @@ fun TripDetailScreen(
                                 value = "Italiano / Inglese",
                                 tint = TripDarkGreen
                             )
+                        }
+
+                        if (!isActivity) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = TripWarmBg,
+                                border = BorderStroke(1.dp, TripGreen.copy(alpha = 0.25f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = " SERVIZI DI VIAGGIO E OSPITALITÀ INCLUSI",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = TripGreen,
+                                            letterSpacing = 0.8.sp
+                                        )
+                                        if (isOrganizerRole) {
+                                            Text(
+                                                text = "Modifica",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = TripGreen,
+                                                modifier = Modifier.clickable { showEditDialog = true }
+                                            )
+                                        }
+                                    }
+
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(TripGreen.copy(alpha = 0.14f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.FlightTakeoff, contentDescription = null, tint = TripGreen, modifier = Modifier.size(19.dp))
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text("Mezzo di Trasporto & Transfer", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                                            Text(parsedContent.transportInfo, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
+                                        }
+                                    }
+
+                                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.35f))
+
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(TripGreen.copy(alpha = 0.14f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.Hotel, contentDescription = null, tint = TripGreen, modifier = Modifier.size(19.dp))
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text("Struttura Alberghiera", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                                            Text(parsedContent.hotelName, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
+                                        }
+                                    }
+
+                                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.35f))
+
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(TripGreen.copy(alpha = 0.14f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.Restaurant, contentDescription = null, tint = TripGreen, modifier = Modifier.size(19.dp))
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text("Formula Trattamento", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                                            Text(parsedContent.boardType, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = TripDarkGreen)
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))

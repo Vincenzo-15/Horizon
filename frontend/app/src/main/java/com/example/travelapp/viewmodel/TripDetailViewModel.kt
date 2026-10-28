@@ -175,6 +175,7 @@ class TripDetailViewModel : ViewModel() {
         selectedSlotLabel: String,
         paymentMethodLabel: String,
         unitPricePaid: Double,
+        participantsNames: String = "",
         onDateBookedSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch {
@@ -196,11 +197,13 @@ class TripDetailViewModel : ViewModel() {
                         val latestRes = myRes.body()?.maxByOrNull { it.id }
                         val receiptPrefs = context.getSharedPreferences("booking_receipts_prefs", Context.MODE_PRIVATE)
                         val editor = receiptPrefs.edit()
+                        val finalParticipants = participantsNames.ifBlank { currentUserName }
                         if (latestRes != null) {
                             editor.putString("traveler_name_${latestRes.id}", currentUserName)
                             editor.putString("traveler_email_${latestRes.id}", currentUserEmail)
                             editor.putString("payment_method_${latestRes.id}", paymentMethodLabel)
                             editor.putString("selected_slot_${latestRes.id}", selectedSlotLabel)
+                            editor.putString("participants_list_${latestRes.id}", finalParticipants)
                             editor.putFloat("unit_price_${latestRes.id}", unitPricePaid.toFloat())
                         }
                         // Salva anche per tripId come fallback immediato
@@ -208,6 +211,7 @@ class TripDetailViewModel : ViewModel() {
                         editor.putString("last_traveler_email_trip_$tripId", currentUserEmail)
                         editor.putString("last_payment_method_trip_$tripId", paymentMethodLabel)
                         editor.putString("last_selected_slot_trip_$tripId", selectedSlotLabel)
+                        editor.putString("last_participants_list_trip_$tripId", finalParticipants)
                         editor.apply()
                     } catch (_: Exception) {}
 

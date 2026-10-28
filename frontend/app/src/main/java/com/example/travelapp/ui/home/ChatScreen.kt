@@ -510,7 +510,8 @@ fun LiveChatTabScreen(
                             value = draftMessage,
                             onValueChange = { draftMessage = it },
                             placeholder = { Text("Scrivi un messaggio a $counterpartName...") },
-                            singleLine = true,
+                            singleLine = false,
+                            maxLines = 5,
                             shape = RoundedCornerShape(24.dp),
                             modifier = Modifier.weight(1f)
                         )
