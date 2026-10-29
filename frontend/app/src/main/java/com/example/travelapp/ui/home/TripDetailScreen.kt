@@ -2351,7 +2351,7 @@ fun TripDetailScreen(
                                                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                                                         ) {
                                                             Text(
-                                                            text = if (agencySpotsSavedFeedback) "Aggiornato" else "Salva Posti Data",
+                                                                text = if (agencySpotsSavedFeedback) "Aggiornato" else "Salva Posti Data",
                                                                 fontSize = 12.sp,
                                                                 fontWeight = FontWeight.ExtraBold,
                                                                 color = Color.White
