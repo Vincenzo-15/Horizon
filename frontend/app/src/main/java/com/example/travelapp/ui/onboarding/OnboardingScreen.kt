@@ -49,7 +49,7 @@ fun OnboardingScreen(onFinish: () -> Unit = {}) {
         OnboardingPage(
             imageRes = R.drawable.onboarding3,
             title = "Vivi il Momento",
-            description = "Prenota in un tocco ed esporta i tuoi viaggi direttamente nel calendario (.ics)."
+            description = "Pianifica, prenota, parti Gestisci i tuoi itinerari, tieni traccia dei posti prenotati e porta sempre sincronizzati i tuoi programmi di viaggio."
         )
     )
 

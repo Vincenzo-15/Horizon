@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.travelapp.network.ReservationDTO
 import com.example.travelapp.network.TripDTO
+import com.example.travelapp.ui.profile.extractFullEmailFromJwt
 import com.example.travelapp.ui.theme.*
 import com.example.travelapp.viewmodel.HomeViewModel
 import kotlinx.coroutines.delay
@@ -1222,9 +1223,29 @@ fun HomeScreen(
 
     // --- BOTTOM SHEET: NOTIFICHE SEMPLIFICATE ---
     if (showNotificationsSheet) {
-        val visibleNotifications = remember(viewModel.myNotifications) {
-            viewModel.myNotifications.filterNot { it.title.startsWith("Dettagli Ricevuta:") }
+        val context = LocalContext.current
+        val tokenManager = remember { com.example.travelapp.utils.TokenManager(context) }
+        val userEmail = extractFullEmailFromJwt(tokenManager.getToken() ?: "")
+
+        // Legge la preferenza privacy salvata nel profilo
+        val privacyPrefs = context.getSharedPreferences("privacy_prefs_$userEmail", Context.MODE_PRIVATE)
+        val allowSharedListNotifications = privacyPrefs.getBoolean("notify_shared", true)
+
+        val visibleNotifications = remember(viewModel.myNotifications, allowSharedListNotifications) {
+            viewModel.myNotifications.filter { notifica ->
+                val isReceipt = notifica.title.startsWith("Dettagli Ricevuta:")
+                val isSharedList = notifica.title.contains("lista", ignoreCase = true) ||
+                        notifica.message.contains("lista", ignoreCase = true)
+
+                // Se la notifica è una lista condivisa e l'utente l'ha disattivata, la nasconde
+                if (isSharedList && !allowSharedListNotifications) {
+                    false
+                } else {
+                    !isReceipt
+                }
+            }
         }
+
         ModalBottomSheet(
             onDismissRequest = { showNotificationsSheet = false },
             containerColor = Color.White

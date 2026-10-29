@@ -890,27 +890,6 @@ private fun PrivacySecurityPage(
                             colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = TripGreen)
                         )
                     }
-
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color.LightGray.copy(alpha = 0.4f))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Promemoria Prenotazioni (.ics)", fontWeight = FontWeight.Bold, color = TripBlack, fontSize = 15.sp)
-                            Text("Mostra avvisi e suggerimenti di esportazione calendario", fontSize = 12.sp, color = Color.Gray)
-                        }
-                        Switch(
-                            checked = notifyTripReminders,
-                            onCheckedChange = {
-                                notifyTripReminders = it
-                                prefs.edit().putBoolean("notify_reminders", it).apply()
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = TripGreen)
-                        )
-                    }
                 }
             }
         }

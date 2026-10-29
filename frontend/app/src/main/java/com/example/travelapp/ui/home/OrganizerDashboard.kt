@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.travelapp.network.ReservationDTO
 import com.example.travelapp.network.TripDTO
+import com.example.travelapp.ui.profile.extractFullEmailFromJwt
 import com.example.travelapp.ui.theme.*
 import com.example.travelapp.viewmodel.OrganizerViewModel
 import kotlinx.coroutines.delay
@@ -693,6 +694,25 @@ fun OrganizerDashboard(
     }
 
     if (showNotificationsSheet) {
+        val context = LocalContext.current
+        val tokenManager = remember { com.example.travelapp.utils.TokenManager(context) }
+        val userEmail = extractFullEmailFromJwt(tokenManager.getToken() ?: "")
+
+        val privacyPrefs = context.getSharedPreferences("privacy_prefs_$userEmail", Context.MODE_PRIVATE)
+        val allowSharedListNotifications = privacyPrefs.getBoolean("notify_shared", true)
+
+        val visibleNotifications = remember(viewModel.myNotifications, allowSharedListNotifications) {
+            viewModel.myNotifications.filter { notifica ->
+                val isSharedList = notifica.title.contains("lista", ignoreCase = true) ||
+                        notifica.message.contains("lista", ignoreCase = true)
+                if (isSharedList && !allowSharedListNotifications) {
+                    false
+                } else {
+                    true
+                }
+            }
+        }
+
         ModalBottomSheet(
             onDismissRequest = { showNotificationsSheet = false },
             containerColor = Color.White
@@ -710,7 +730,7 @@ fun OrganizerDashboard(
                 )
                 Spacer(modifier = Modifier.height(14.dp))
 
-                if (viewModel.myNotifications.isEmpty()) {
+                if (visibleNotifications.isEmpty()) {
                     Text(
                         text = "Non ci sono nuove notifiche.",
                         color = Color.Gray,
@@ -720,7 +740,7 @@ fun OrganizerDashboard(
                     LazyColumn(
                         modifier = Modifier.heightIn(max = 420.dp)
                     ) {
-                        items(viewModel.myNotifications) { notifica ->
+                        items(visibleNotifications) { notifica ->
                             val timeText = if (notifica.timestamp.length >= 10) notifica.timestamp.take(10) else "Oggi"
                             Box(
                                 modifier = Modifier
