@@ -14,8 +14,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Notifications
@@ -67,6 +69,16 @@ fun resolveReceiptDetails(
     notificationsMessages: List<String>
 ): ResolvedReceiptInfo {
     val prefs = context.getSharedPreferences("booking_receipts_prefs", Context.MODE_PRIVATE)
+    val titleKey = order.tripTitle.trim().lowercase()
+    val resolvedTripId = matchedTrip?.id ?: order.tripId
+
+    // 1. Cerca i dettagli della ricevuta salvati su PostgreSQL
+    val dbReceiptLine = notificationsMessages.firstOrNull { msg ->
+        msg.contains("Partecipanti:") && msg.contains(order.tripTitle, ignoreCase = true)
+    }
+    val dbParticipants = dbReceiptLine?.substringAfter("Partecipanti:", "")?.substringBefore("|")?.trim()?.takeIf { it.isNotBlank() }
+    val dbSlot = dbReceiptLine?.substringAfter("Turno:", "")?.substringBefore("|")?.trim()?.takeIf { it.isNotBlank() }
+    val dbPayment = dbReceiptLine?.substringAfter("Pagamento:", "")?.substringBefore("(")?.trim()?.takeIf { it.isNotBlank() }
 
     val nameFromNotification = notificationsMessages.firstNotNullOfOrNull { msg ->
         if (msg.contains(order.tripTitle, ignoreCase = true) && msg.contains(" ha prenotato")) {
@@ -75,26 +87,49 @@ fun resolveReceiptDetails(
     }
 
     val travelerName = order.travelerName?.takeIf { it.isNotBlank() }
-        ?: prefs.getString("traveler_name_${order.id}", null)
+        ?: (if (order.id > 0L) prefs.getString("traveler_name_${order.id}", null) else null)
+        ?: prefs.getString("last_traveler_name_title_$titleKey", null)
+        ?: prefs.getString("last_traveler_name_trip_$resolvedTripId", null)
         ?: nameFromNotification
-        ?: prefs.getString("last_traveler_name_trip_${order.tripId}", null)
-        ?: if (order.id % 2L == 0L) "Giulia Bianchi" else "Mario Rossi"
+        ?: dbParticipants?.substringBefore(",")?.trim()
+        ?: if (order.id % 2L == 0L) "Giulia Bianchi" else "Vincenzo Calabrò"
 
     val travelerEmail = order.travelerEmail?.takeIf { it.isNotBlank() }
-        ?: prefs.getString("last_traveler_email_trip_${order.tripId}", null)
+        ?: (if (order.id > 0L) prefs.getString("traveler_email_${order.id}", null) else null)
+        ?: prefs.getString("last_traveler_email_title_$titleKey", null)
+        ?: prefs.getString("last_traveler_email_trip_$resolvedTripId", null)
         ?: "${travelerName.lowercase().replace(" ", ".")}@horizon.it"
 
-    val paymentMethod = prefs.getString("payment_method_${order.id}", null)
-        ?: prefs.getString("last_payment_method_trip_${order.tripId}", null)
+    val paymentMethod = dbPayment
+        ?: (if (order.id > 0L) prefs.getString("payment_method_${order.id}", null) else null)
+        ?: prefs.getString("last_payment_method_title_$titleKey", null)
+        ?: prefs.getString("last_payment_method_trip_$resolvedTripId", null)
         ?: if (order.id % 2L == 0L) "PayPal Express Verificato" else "Carta Visa/Mastercard (•••• 8890)"
 
-    val selectedSlot = prefs.getString("selected_slot_${order.id}", null)
-        ?: prefs.getString("last_selected_slot_trip_${order.tripId}", null)
+    val selectedSlot = dbSlot
+        ?: (if (order.id > 0L) prefs.getString("selected_slot_${order.id}", null) else null)
+        ?: prefs.getString("last_selected_slot_title_$titleKey", null)
+        ?: prefs.getString("last_selected_slot_trip_$resolvedTripId", null)
         ?: matchedTrip?.let { "${it.startDate} → ${it.endDate}" }
         ?: order.reservationDate.take(10)
 
     val unitPrice = if (order.bookedSpots > 0) order.totalPaid / order.bookedSpots else order.totalPaid
-    val participantsList = prefs.getString("participants_list_${order.id}", null) ?: prefs.getString("last_participants_list_trip_${order.tripId}", null) ?: travelerName
+
+    val candidates = listOfNotNull(
+        dbParticipants,
+        prefs.getString("participants_${titleKey}_${order.bookedSpots}", null),
+        if (order.id > 0L) prefs.getString("participants_list_${order.id}", null) else null,
+        prefs.getString("last_participants_list_title_$titleKey", null),
+        prefs.getString("last_participants_list_trip_$resolvedTripId", null),
+        prefs.getString("last_participants_list_trip_${order.tripId}", null)
+    ).filter { it.isNotBlank() }
+
+    // Se la prenotazione ha più posti, diamo priorità alla lista che contiene più nominativi separati da virgola
+    val participantsList = if (order.bookedSpots > 1) {
+        candidates.firstOrNull { it.contains(",") } ?: candidates.firstOrNull() ?: travelerName
+    } else {
+        candidates.firstOrNull() ?: travelerName
+    }
 
     return ResolvedReceiptInfo(
         receiptCode = "HRZ-2026-${String.format(Locale.US, "%04d", order.id)}",
@@ -478,8 +513,10 @@ fun OrganizerDashboard(
                                 Spacer(modifier = Modifier.height(6.dp))
                             }
 
-                            items(viewModel.agencyOrders.take(3)) { order ->
-                                val matchedTrip = viewModel.myTrips.find { it.id == order.tripId }
+                            items(viewModel.agencyOrders) { order ->
+                                val matchedTrip = viewModel.myTrips.find {
+                                    it.id == order.tripId || it.title.equals(order.tripTitle, ignoreCase = true)
+                                }
                                 val receiptInfo = resolveReceiptDetails(context, order, matchedTrip, notificationMessages)
                                 AgencyReceiptRowCard(
                                     order = order,
@@ -655,7 +692,6 @@ fun OrganizerDashboard(
         }
     }
 
-    // BOTTOM SHEET NOTIFICHE AGENZIA ALLINEATO SENZA SOVRAPPOSIZIONI
     if (showNotificationsSheet) {
         ModalBottomSheet(
             onDismissRequest = { showNotificationsSheet = false },
@@ -664,91 +700,49 @@ fun OrganizerDashboard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 14.dp)
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Notifiche Agenzia",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TripBlack
-                        )
-                        Text(
-                            text = "Tocca una notifica per aprire la ricevuta",
-                            fontSize = 12.sp,
-                            color = Color.Gray
-                        )
-                    }
-                    Surface(
-                        color = TripGreen.copy(alpha = 0.12f),
-                        shape = RoundedCornerShape(50)
-                    ) {
-                        Text(
-                            text = "${viewModel.agencyOrders.size} ricevute",
-                            color = TripDarkGreen,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-
+                Text(
+                    text = "Notifiche Agenzia",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TripBlack
+                )
                 Spacer(modifier = Modifier.height(14.dp))
 
-                if (viewModel.agencyOrders.isEmpty() && viewModel.myNotifications.isEmpty()) {
+                if (viewModel.myNotifications.isEmpty()) {
                     Text(
-                        text = "Non hai ancora ricevuto nuove prenotazioni.",
+                        text = "Non ci sono nuove notifiche.",
                         color = Color.Gray,
                         modifier = Modifier.padding(vertical = 16.dp)
                     )
                 } else {
                     LazyColumn(
-                        modifier = Modifier.heightIn(max = 420.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        modifier = Modifier.heightIn(max = 420.dp)
                     ) {
-                        // Notifiche dei nuovi messaggi in Chat e recensioni (toccandole apre la sezione Messaggi)
                         items(viewModel.myNotifications) { notifica ->
-                            val isChatNotif = notifica.title.contains("Chat", ignoreCase = true)
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = TripWarmBg,
+                            val timeText = if (notifica.timestamp.length >= 10) notifica.timestamp.take(10) else "Oggi"
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        if (isChatNotif) {
-                                            showNotificationsSheet = false
+                                        showNotificationsSheet = false
+                                        if (notifica.title.contains("Chat", ignoreCase = true)) {
                                             selectedTab = "Messaggi"
+                                        } else if (notifica.title.contains("prenotazione", ignoreCase = true)) {
+                                            selectedTab = "Ordini"
                                         }
                                     }
                             ) {
-                                Box(modifier = Modifier.padding(14.dp)) {
-                                    NotificationItem(
-                                        title = notifica.title,
-                                        message = notifica.message + if (isChatNotif) " (Tocca per rispondere in chat)" else "",
-                                        time = notifica.timestamp.take(10)
-                                    )
-                                }
+                                NotificationItem(
+                                    title = notifica.title,
+                                    message = notifica.message,
+                                    time = timeText
+                                )
                             }
-                        }
-                        items(viewModel.agencyOrders) { order ->
-                            val matchedTrip = viewModel.myTrips.find { it.id == order.tripId }
-                            val receiptInfo = resolveReceiptDetails(context, order, matchedTrip, notificationMessages)
-
-                            AgencyNotificationCard(
-                                badgeCode = "#${receiptInfo.receiptCode}",
-                                dateText = order.reservationDate.take(10),
-                                travelerName = receiptInfo.travelerName,
-                                subtitle = "${order.bookedSpots} posti • ${order.tripTitle}",
-                                amountText = "€${String.format(Locale.ITALY, "%.2f", order.totalPaid)}",
-                                onClick = {
-                                    showNotificationsSheet = false
-                                    selectedOrderForReceipt = order
-                                }
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 12.dp),
+                                color = Color.LightGray.copy(alpha = 0.4f)
                             )
                         }
                     }
@@ -761,8 +755,13 @@ fun OrganizerDashboard(
     // MODAL RICEVUTA UFFICIALE DI PRENOTAZIONE
     if (selectedOrderForReceipt != null) {
         val order = selectedOrderForReceipt!!
-        val matchedTrip = viewModel.myTrips.find { it.id == order.tripId }
+        val matchedTrip = viewModel.myTrips.find {
+            it.id == order.tripId || it.title.equals(order.tripTitle, ignoreCase = true)
+        }
         val receiptInfo = resolveReceiptDetails(context, order, matchedTrip, notificationMessages)
+        val participantsArray = remember(receiptInfo.participantsList) {
+            receiptInfo.participantsList.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        }
 
         ModalBottomSheet(
             onDismissRequest = { selectedOrderForReceipt = null },
@@ -771,6 +770,7 @@ fun OrganizerDashboard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp, vertical = 12.dp)
             ) {
                 Row(
@@ -830,14 +830,64 @@ fun OrganizerDashboard(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = "DATI DEL VIAGGIATORE",
+                            text = "DATI DEL VIAGGIATORE E PARTECIPANTI",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = TripGreen,
                             letterSpacing = 0.8.sp
                         )
-                        ReceiptDetailRow("Cliente:", receiptInfo.travelerName, isBold = true)
+                        ReceiptDetailRow("Titolare prenotazione:", receiptInfo.travelerName, isBold = true)
                         ReceiptDetailRow("Email contatto:", receiptInfo.travelerEmail)
+
+                        // Riquadro Nominativi Partecipanti formattati riga per riga senza fuoriuscire
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Nominativi Partecipanti Registrati (${participantsArray.size}):",
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                            participantsArray.forEachIndexed { index, personName ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color.White,
+                                    border = BorderStroke(1.dp, TripGreen.copy(alpha = 0.25f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(22.dp)
+                                                .clip(CircleShape)
+                                                .background(TripGreen.copy(alpha = 0.15f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "${index + 1}",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = TripDarkGreen
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = personName,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TripBlack,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
 
                         HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
 
@@ -849,7 +899,6 @@ fun OrganizerDashboard(
                             letterSpacing = 0.8.sp
                         )
                         ReceiptDetailRow("Pacchetto / Attività:", order.tripTitle, isBold = true)
-                        ReceiptDetailRow("Partecipanti:", receiptInfo.participantsList)
                         ReceiptDetailRow("Data / Turno scelto:", receiptInfo.selectedDateSlot)
                         ReceiptDetailRow("Posti riservati:", "${order.bookedSpots} partecipanti")
 
@@ -904,6 +953,7 @@ fun OrganizerDashboard(
                                 RICEVUTA UFFICIALE HORIZON TRAVEL
                                 Codice: #${receiptInfo.receiptCode}
                                 Cliente: ${receiptInfo.travelerName} (${receiptInfo.travelerEmail})
+                                Partecipanti: ${receiptInfo.participantsList}
                                 Esperienza: ${order.tripTitle}
                                 Data/Turno: ${receiptInfo.selectedDateSlot}
                                 Posti prenotati: ${order.bookedSpots}
@@ -930,7 +980,7 @@ fun OrganizerDashboard(
 
                     Button(
                         onClick = {
-                            val targetTripId = order.tripId
+                            val targetTripId = matchedTrip?.id ?: order.tripId
                             selectedOrderForReceipt = null
                             onTripClick(targetTripId)
                         },
@@ -1143,23 +1193,22 @@ fun AgencyReceiptRowCard(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = receiptInfo.travelerName,
+                    text = receiptInfo.participantsList,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 15.sp,
                     color = TripBlack,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = order.tripTitle,
+                    text = "${order.bookedSpots} posti • ${order.tripTitle}",
                     fontSize = 13.sp,
                     color = Color.Gray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-
             Spacer(modifier = Modifier.width(10.dp))
 
             Surface(

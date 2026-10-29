@@ -17,4 +17,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 
     // Tutti i messaggi di una specifica stanza (Viaggio + Viaggiatore)
     List<ChatMessage> findByTripIdAndTravelerEmailIgnoreCaseOrderByTimestampAsc(Long tripId, String travelerEmail);
+
+    List<ChatMessage> findByTripOrganizerIdAndTravelerEmailIgnoreCaseOrderByTimestampAsc(Long organizerId, String travelerEmail);
 }

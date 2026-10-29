@@ -2,6 +2,8 @@ package com.example.travelapp.ui.home
 
 import android.content.Context
 import android.content.Intent
+import android.provider.CalendarContract
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -9,8 +11,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.DateRange
@@ -37,7 +41,9 @@ import com.example.travelapp.network.TripDTO
 import com.example.travelapp.ui.theme.*
 import com.example.travelapp.viewmodel.HomeViewModel
 import kotlinx.coroutines.delay
+import java.util.Locale
 import kotlin.math.roundToInt
+import java.text.SimpleDateFormat
 
 //fun isActivityOrExcursion(trip: TripDTO): Boolean {
 //    val sameDay = !trip.startDate.isNullOrBlank() && trip.startDate == trip.endDate
@@ -63,11 +69,17 @@ fun isActivityOrExcursion(trip: TripDTO): Boolean {
             titleLower.contains("escursion")
 }
 
-fun buildIcsContent(reservation: ReservationDTO, trip: TripDTO?): String {
+fun buildIcsContent(
+    reservation: ReservationDTO,
+    trip: TripDTO?,
+    receiptInfo: ResolvedReceiptInfo? = null
+): String {
     val rawStart = (trip?.startDate ?: reservation.reservationDate.take(10)).replace("-", "")
     val rawEnd = (trip?.endDate ?: rawStart).replace("-", "")
     val location = trip?.location ?: "Destinazione Horizon"
-    val description = "Prenotazione #${reservation.id} - Posti: ${reservation.bookedSpots} - Totale: €${reservation.totalPaid}"
+    val slotText = receiptInfo?.selectedDateSlot ?: "${trip?.startDate ?: ""} → ${trip?.endDate ?: ""}"
+    val participantsText = receiptInfo?.participantsList ?: "${reservation.bookedSpots} partecipanti"
+    val description = "Prenotazione #${reservation.id} | Data/Turno: $slotText | Partecipanti: $participantsText | Totale: €${reservation.totalPaid}"
 
     return """
         BEGIN:VCALENDAR
@@ -95,6 +107,41 @@ fun shareIcsCalendar(context: Context, icsContent: String, title: String) {
     context.startActivity(Intent.createChooser(sendIntent, "Esporta file .ics"))
 }
 
+fun openSystemCalendar(
+    context: Context,
+    title: String,
+    location: String,
+    description: String,
+    startDateIso: String?,
+    endDateIso: String?
+) {
+    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    val startMillis = try {
+        startDateIso?.let { sdf.parse(it)?.time } ?: System.currentTimeMillis()
+    } catch (_: Exception) {
+        System.currentTimeMillis()
+    }
+    val endMillis = try {
+        endDateIso?.let { sdf.parse(it)?.time?.plus(86_400_000L) } ?: (startMillis + 86_400_000L)
+    } catch (_: Exception) {
+        startMillis + 86_400_000L
+    }
+
+    val calIntent = Intent(Intent.ACTION_INSERT).apply {
+        data = CalendarContract.Events.CONTENT_URI
+        putExtra(CalendarContract.Events.TITLE, title)
+        putExtra(CalendarContract.Events.EVENT_LOCATION, location)
+        putExtra(CalendarContract.Events.DESCRIPTION, description)
+        putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, startMillis)
+        putExtra(CalendarContract.EXTRA_EVENT_END_TIME, endMillis)
+        putExtra(CalendarContract.EXTRA_EVENT_ALL_DAY, true)
+    }
+    try {
+        context.startActivity(calIntent)
+    } catch (_: Exception) {
+        shareIcsCalendar(context, description, title)
+    }
+}
 data class FamousDestination(
     val name: String,
     val country: String,
@@ -161,14 +208,7 @@ fun resolveTripImageUrl(trip: TripDTO?): String {
     if (!rawUrl.isNullOrBlank() && rawUrl.startsWith("http")) {
         return rawUrl.replace("localhost", "10.0.2.2")
     }
-    val loc = "${trip?.location ?: ""} ${trip?.title ?: ""}".lowercase()
-    return when {
-        loc.contains("roma") -> "https://images.unsplash.com/photo-1552832230-c0197dd311b5?auto=format&fit=crop&w=800&q=80"
-        loc.contains("losanna") || loc.contains("svizzera") -> "https://images.unsplash.com/photo-1527668752968-14dc70a27c95?auto=format&fit=crop&w=800&q=80"
-        loc.contains("parigi") -> "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=800&q=80"
-        loc.contains("tokyo") || loc.contains("giappone") -> "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=800&q=80"
-        else -> "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=800&q=80"
-    }
+    return ""
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -201,6 +241,7 @@ fun HomeScreen(
             sortOption != "RATING"
 
     var icsPreviewReservation by remember { mutableStateOf<ReservationDTO?>(null) }
+    var selectedTravelerReceipt by remember { mutableStateOf<ReservationDTO?>(null) }
     val context = LocalContext.current
 
     LaunchedEffect(tokenUtente) {
@@ -870,6 +911,7 @@ fun HomeScreen(
                         errorMessage = viewModel.reservationsError,
                         onRefresh = { viewModel.fetchMyReservations(tokenUtente) },
                         onTripClick = onTripClick,
+                        onOpenReceiptClick = { reservation -> selectedTravelerReceipt = reservation },
                         onExportIcsClick = { reservation -> icsPreviewReservation = reservation }
                     )
                 }
@@ -886,25 +928,33 @@ fun HomeScreen(
         }
     }
 
-    // --- DIALOG ESPORTAZIONE CALENDARIO (.ICS) ---
+    // --- DIALOG ESPORTAZIONE CALENDARIO (.ICS + APP CALENDARIO DI SISTEMA) ---
     if (icsPreviewReservation != null) {
         val res = icsPreviewReservation!!
-        val matchedTrip = viewModel.trips.find { it.id == res.tripId }
-        val icsContent = buildIcsContent(res, matchedTrip)
+        val matchedTrip = viewModel.trips.find {
+            it.id == res.tripId || it.title.equals(res.tripTitle, ignoreCase = true)
+        }
+        val receiptInfo = resolveReceiptDetails(
+            context = context,
+            order = res,
+            matchedTrip = matchedTrip,
+            notificationsMessages = viewModel.myNotifications.map { it.message }
+        )
+        val icsContent = buildIcsContent(res, matchedTrip, receiptInfo)
 
         AlertDialog(
             onDismissRequest = { icsPreviewReservation = null },
+            containerColor = Color.White,
             title = {
-                Text("Esporta in Calendario (.ics)", fontWeight = FontWeight.ExtraBold, color = TripBlack)
+                Text("Esporta in Calendario", fontWeight = FontWeight.ExtraBold, color = TripBlack)
             },
             text = {
-                Column {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Formato standard iCalendar (.ics) generato per \"${res.tripTitle}\":",
+                        text = "Puoi aggiungere direttamente l'evento nell'app Calendario del telefono oppure condividere il tracciato standard iCalendar (.ics):",
                         fontSize = 13.sp,
                         color = Color.DarkGray
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
                     Surface(
                         color = TripWarmBg,
                         shape = RoundedCornerShape(12.dp),
@@ -918,6 +968,26 @@ fun HomeScreen(
                             modifier = Modifier.padding(12.dp)
                         )
                     }
+                    OutlinedButton(
+                        onClick = {
+                            openSystemCalendar(
+                                context = context,
+                                title = res.tripTitle,
+                                location = matchedTrip?.location ?: "Destinazione Horizon",
+                                description = "Prenotazione #${receiptInfo.receiptCode} • Partecipanti: ${receiptInfo.participantsList} • Turno: ${receiptInfo.selectedDateSlot}",
+                                startDateIso = matchedTrip?.startDate,
+                                endDateIso = matchedTrip?.endDate
+                            )
+                            icsPreviewReservation = null
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.5.dp, TripGreen),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.DateRange, contentDescription = null, tint = TripGreen, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Apri in App Calendario", color = TripDarkGreen, fontWeight = FontWeight.ExtraBold)
+                    }
                 }
             },
             confirmButton = {
@@ -930,7 +1000,7 @@ fun HomeScreen(
                 ) {
                     Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Condividi / Salva .ics")
+                    Text("Condividi .ics")
                 }
             },
             dismissButton = {
@@ -941,8 +1011,220 @@ fun HomeScreen(
         )
     }
 
-    // --- BOTTOM SHEET: NOTIFICHE REALI ---
+    if (selectedTravelerReceipt != null) {
+        val res = selectedTravelerReceipt!!
+        val matchedTrip = viewModel.trips.find {
+            it.id == res.tripId || it.title.equals(res.tripTitle, ignoreCase = true)
+        }
+        val receiptInfo = resolveReceiptDetails(
+            context = context,
+            order = res,
+            matchedTrip = matchedTrip,
+            notificationsMessages = viewModel.myNotifications.map { it.message }
+        )
+        val participantsArray = remember(receiptInfo.participantsList) {
+            receiptInfo.participantsList.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        }
+
+        ModalBottomSheet(
+            onDismissRequest = { selectedTravelerReceipt = null },
+            containerColor = Color.White
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Surface(
+                            color = TripGreen.copy(alpha = 0.14f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = "✓ PRENOTAZIONE CONFERMATA • ${res.status}",
+                                color = TripDarkGreen,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "La tua Ricevuta di Viaggio",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TripBlack
+                        )
+                        Text(
+                            text = "Codice Prenotazione: #${receiptInfo.receiptCode}",
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color.Gray
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(TripGreen.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = TripGreen, modifier = Modifier.size(26.dp))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = TripWarmBg,
+                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "DATI PRENOTAZIONE E PARTECIPANTI",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TripGreen,
+                            letterSpacing = 0.8.sp
+                        )
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Partecipanti registrati (${participantsArray.size}):",
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                            participantsArray.forEachIndexed { index, personName ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color.White,
+                                    border = BorderStroke(1.dp, TripGreen.copy(alpha = 0.25f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(22.dp)
+                                                .clip(CircleShape)
+                                                .background(TripGreen.copy(alpha = 0.15f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "${index + 1}",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = TripDarkGreen
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = personName,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TripBlack,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+
+                        Text(
+                            text = "DETTAGLI ESPERIENZA",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TripGreen,
+                            letterSpacing = 0.8.sp
+                        )
+                        Text(res.tripTitle, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = TripBlack)
+                        Text("Data / Turno: ${receiptInfo.selectedDateSlot}", fontSize = 13.sp, color = Color.DarkGray)
+                        Text("Metodo di pagamento: ${receiptInfo.paymentMethod}", fontSize = 13.sp, color = Color.DarkGray)
+
+                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("TOTALE PAGATO", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = TripBlack)
+                            Text(
+                                text = "€${String.format(java.util.Locale.ITALY, "%.2f", res.totalPaid)}",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 22.sp,
+                                color = TripDarkGreen
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            selectedTravelerReceipt = null
+                            icsPreviewReservation = res
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.5.dp, TripGreen),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
+                    ) {
+                        Icon(Icons.Default.DateRange, contentDescription = null, tint = TripGreen, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("File .ics", color = TripDarkGreen, fontWeight = FontWeight.ExtraBold)
+                    }
+
+                    Button(
+                        onClick = {
+                            val targetId = matchedTrip?.id ?: res.tripId
+                            selectedTravelerReceipt = null
+                            onTripClick(targetId)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = TripGreen),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
+                    ) {
+                        Text("Vedi Dettagli →", color = Color.White, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
+
+    // --- BOTTOM SHEET: NOTIFICHE SEMPLIFICATE ---
     if (showNotificationsSheet) {
+        val visibleNotifications = remember(viewModel.myNotifications) {
+            viewModel.myNotifications.filterNot { it.title.startsWith("Dettagli Ricevuta:") }
+        }
         ModalBottomSheet(
             onDismissRequest = { showNotificationsSheet = false },
             containerColor = Color.White
@@ -952,31 +1234,30 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp, vertical = 16.dp)
             ) {
-                Text("Notifiche e Promemoria", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
-                Spacer(modifier = Modifier.height(16.dp))
+                Text("Notifiche", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TripBlack)
+                Spacer(modifier = Modifier.height(14.dp))
 
-                if (viewModel.myNotifications.isEmpty()) {
+                if (visibleNotifications.isEmpty()) {
                     Text("Non hai nuove notifiche.", color = Color.Gray, modifier = Modifier.padding(vertical = 16.dp))
                 } else {
-                    LazyColumn {
-                        items(viewModel.myNotifications) { notifica ->
+                    LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                        items(visibleNotifications) { notifica ->
                             val timeText = if (notifica.timestamp.length >= 10) notifica.timestamp.take(10) else "Oggi"
-                            val isChatNotif = notifica.title.contains("Chat", ignoreCase = true) ||
-                                    notifica.title.contains("risposta", ignoreCase = true)
-
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        if (isChatNotif) {
-                                            showNotificationsSheet = false
-                                            selectedTab = "Messaggi"
+                                        showNotificationsSheet = false
+                                        when {
+                                            notifica.title.contains("Chat", true) || notifica.title.contains("risposta", true) -> selectedTab = "Messaggi"
+                                            notifica.title.contains("Prenotazione", true) -> selectedTab = "Viaggi"
+                                            notifica.title.contains("lista", true) -> selectedTab = "Preferiti"
                                         }
                                     }
                             ) {
                                 NotificationItem(
                                     title = notifica.title,
-                                    message = notifica.message + if (isChatNotif) " (Tocca per aprire la chat)" else "",
+                                    message = notifica.message,
                                     time = timeText
                                 )
                             }
@@ -984,7 +1265,7 @@ fun HomeScreen(
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(28.dp))
             }
         }
     }
@@ -1226,8 +1507,11 @@ fun MyReservationsSection(
     errorMessage: String?,
     onRefresh: () -> Unit,
     onTripClick: (Long) -> Unit,
+    onOpenReceiptClick: (ReservationDTO) -> Unit = {},
     onExportIcsClick: (ReservationDTO) -> Unit
 ) {
+    val context = LocalContext.current
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -1318,8 +1602,11 @@ fun MyReservationsSection(
             }
         } else {
             items(reservations) { reservation ->
-                val matchedTrip = allTrips.find { it.id == reservation.tripId }
+                val matchedTrip = allTrips.find {
+                    it.id == reservation.tripId || it.title.equals(reservation.tripTitle, ignoreCase = true)
+                }
                 val isActivity = matchedTrip?.let { isActivityOrExcursion(it) } ?: false
+                val receiptInfo = resolveReceiptDetails(context, reservation, matchedTrip, emptyList())
 
                 Surface(
                     shape = RoundedCornerShape(20.dp),
@@ -1328,7 +1615,7 @@ fun MyReservationsSection(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 24.dp, vertical = 8.dp)
-                        .clickable { onTripClick(reservation.tripId) }
+                        .clickable { onOpenReceiptClick(reservation) }
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1405,10 +1692,13 @@ fun MyReservationsSection(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(
-                                        text = "${reservation.bookedSpots} partecipanti",
-                                        fontSize = 13.sp,
+                                        text = "${reservation.bookedSpots} pers.: ${receiptInfo.participantsList}",
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color.DarkGray
+                                        color = Color.DarkGray,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
                                     )
                                     Text(
                                         text = "Pagato: €${reservation.totalPaid}",
@@ -1435,8 +1725,8 @@ fun MyReservationsSection(
                                 Text("Esporta Calendario (.ics)", color = TripGreen, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
 
-                            TextButton(onClick = { onTripClick(reservation.tripId) }) {
-                                Text("Vedi dettagli →", color = TripBlack, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            TextButton(onClick = { onOpenReceiptClick(reservation) }) {
+                                Text("Apri Ricevuta →", color = TripBlack, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
                         }
                     }
@@ -1934,7 +2224,7 @@ fun CityDetailScreen(
                 TripAdvisorFullCard(trip = trip, onClick = { onTripClick(trip) })
             }
         }
-     }
+    }
 }
 
 @Composable

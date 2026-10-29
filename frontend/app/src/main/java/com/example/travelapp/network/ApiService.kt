@@ -158,6 +158,13 @@ interface ApiService {
         @Body request: CreateReviewRequest
     ): Response<TripDTO>
 
+    @POST("/api/notifications/receipt-details/{tripId}")
+    suspend fun saveReceiptDetails(
+        @Header("Authorization") token: String,
+        @Path("tripId") tripId: Long,
+        @Body request: SaveReceiptDetailsRequest
+    ): Response<Unit>
+
     // --- LIVE CHAT IN TEMPO REALE ---
     @GET("/api/notifications/chat/conversations")
     suspend fun getChatConversations(
@@ -250,6 +257,13 @@ data class CreateReviewRequest(
     val rating: Int,
     val comment: String
 )
+
+data class SaveReceiptDetailsRequest(
+    val participantsNames: String,
+    val selectedSlot: String,
+    val paymentMethod: String
+)
+
 data class ForgotPasswordRequest(
     val email: String,
 )

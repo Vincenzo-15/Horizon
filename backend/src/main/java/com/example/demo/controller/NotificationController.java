@@ -72,10 +72,10 @@ public class NotificationController {
                 ? chatMessageRepository.findByTripOrganizerIdOrderByTimestampAsc(currentUser.getId())
                 : chatMessageRepository.findByTravelerIdOrderByTimestampAsc(currentUser.getId());
 
-        // Raggruppa i messaggi del DB per conversazione
         Map<String, List<ChatMessage>> grouped = new LinkedHashMap<>();
         for (ChatMessage msg : allMessages) {
-            String key = msg.getTrip().getId() + "_" + msg.getTraveler().getId();
+            Long orgId = msg.getTrip().getOrganizer() != null ? msg.getTrip().getOrganizer().getId() : 0L;
+            String key = orgId + "_" + msg.getTraveler().getId();
             grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(msg);
         }
 
@@ -141,8 +141,14 @@ public class NotificationController {
                 ? travelerEmail.trim().toLowerCase(Locale.ROOT)
                 : currentUser.getEmail().trim().toLowerCase(Locale.ROOT);
 
+        // --- INIZIO MODIFICA UNIFICAZIONE CHAT ---
+        Trip trip = tripRepository.findById(tripId)
+                .orElseThrow(() -> new IllegalArgumentException("Viaggio non trovato"));
+        Long organizerId = trip.getOrganizer() != null ? trip.getOrganizer().getId() : 0L;
+
         List<ChatMessage> roomMessages = chatMessageRepository
-                .findByTripIdAndTravelerEmailIgnoreCaseOrderByTimestampAsc(tripId, targetTravelerEmail);
+                .findByTripOrganizerIdAndTravelerEmailIgnoreCaseOrderByTimestampAsc(organizerId, targetTravelerEmail);
+        // --- FINE MODIFICA ---
 
         // Segna come letti nel database i messaggi ricevuti dall'interlocutore
         List<ChatMessage> unreadToUpdate = new ArrayList<>();
@@ -299,6 +305,53 @@ public class NotificationController {
         return ResponseEntity.ok(dto);
     }
 
+    // 5. Salva su PostgreSQL i nominativi di tutti i partecipanti, il turno e il metodo di pagamento
+    @PostMapping("/receipt-details/{tripId}")
+    @Transactional
+    public ResponseEntity<Void> saveReceiptDetails(
+            @PathVariable Long tripId,
+            @RequestBody SaveReceiptDetailsRequest request,
+            Principal principal
+    ) {
+        User traveler = userRepository.findByEmail(principal.getName())
+                .orElseThrow(() -> new IllegalArgumentException("Utente non trovato"));
+
+        Trip trip = tripRepository.findById(tripId)
+                .orElseThrow(() -> new IllegalArgumentException("Viaggio non trovato"));
+
+        String participants = (request.getParticipantsNames() != null && !request.getParticipantsNames().isBlank())
+                ? request.getParticipantsNames().trim()
+                : traveler.getName();
+        String slot = (request.getSelectedSlot() != null && !request.getSelectedSlot().isBlank())
+                ? request.getSelectedSlot().trim()
+                : (trip.getStartDate() + " → " + trip.getEndDate());
+        String payment = (request.getPaymentMethod() != null && !request.getPaymentMethod().isBlank())
+                ? request.getPaymentMethod().trim()
+                : "Carta Visa/Mastercard";
+
+        String detailsPayload = "Partecipanti: " + participants
+                + " | Turno: " + slot
+                + " | Pagamento: " + payment
+                + " (" + trip.getTitle() + ")";
+
+        // Salva per il viaggiatore e per l'agenzia su PostgreSQL
+        notificationRepository.save(new Notification(
+                "Dettagli Ricevuta: " + trip.getTitle(),
+                detailsPayload,
+                traveler
+        ));
+
+        if (trip.getOrganizer() != null) {
+            notificationRepository.save(new Notification(
+                    "Dettagli Ricevuta: " + trip.getTitle(),
+                    detailsPayload,
+                    trip.getOrganizer()
+            ));
+        }
+
+        return ResponseEntity.ok().build();
+    }
+
     @Data
     public static class CreateReviewRequest {
         private int rating;
@@ -309,6 +362,13 @@ public class NotificationController {
     public static class SendChatMessageRequest {
         private String message;
         private String travelerEmail;
+    }
+
+    @Data
+    public static class SaveReceiptDetailsRequest {
+        private String participantsNames;
+        private String selectedSlot;
+        private String paymentMethod;
     }
 
     @Data

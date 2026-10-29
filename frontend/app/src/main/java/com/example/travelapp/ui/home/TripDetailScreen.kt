@@ -266,53 +266,40 @@ fun buildMultiDayTripOptions(
         }
     } catch (_: Exception) {}
 
-    val endCal = (startCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 4) }
+    val endCal = (startCal.clone() as Calendar)
     try {
         if (!trip.endDate.isNullOrBlank()) {
             sdfInput.parse(trip.endDate)?.let { endCal.time = it }
         }
     } catch (_: Exception) {}
 
-    val durationDays = (((endCal.timeInMillis - startCal.timeInMillis) / (1000 * 60 * 60 * 24)).toInt()).coerceAtLeast(2)
+    startCal.set(Calendar.HOUR_OF_DAY, 0)
+    startCal.set(Calendar.MINUTE, 0)
+    startCal.set(Calendar.SECOND, 0)
+    startCal.set(Calendar.MILLISECOND, 0)
 
-    val offsets = listOf(0, 14, 30)
-    return offsets.mapIndexed { idx, dayOffset ->
-        val cStart = (startCal.clone() as Calendar).apply {
-            add(Calendar.DAY_OF_YEAR, dayOffset)
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-        val cEnd = (cStart.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, durationDays) }
-        val isoKey = sdfInput.format(cStart.time)
-        val isPast = cStart.before(todayMidnight)
+    val durationDays = (((endCal.timeInMillis - startCal.timeInMillis) / (1000 * 60 * 60 * 24)).toInt() + 1).coerceAtLeast(1)
+    val isoKey = sdfInput.format(startCal.time)
+    val isPast = startCal.before(todayMidnight)
 
-        val (seasonMult, seasonLabel) = calculateSeasonalMultiplier(
-            cStart.get(Calendar.MONTH),
-            cStart.get(Calendar.DAY_OF_MONTH),
-            cStart.get(Calendar.DAY_OF_WEEK),
-            weekendMarkupPercent
-        )
+    val customCap = datePrefs.getInt("custom_cap_${trip.id}_$isoKey", -1)
+    val effectiveCap = if (customCap >= 0) customCap else baseCapacity
+    val bookedForSlot = datePrefs.getInt("booked_${trip.id}_$isoKey", 0)
+    val remaining = (effectiveCap - bookedForSlot).coerceAtLeast(0)
 
-        val slotPrice = ((basePrice * seasonMult)).roundToInt().toDouble()
-        val bookedForSlot = datePrefs.getInt("booked_${trip.id}_$isoKey", 0)
-        val initialSlotCap = if (idx == 0) baseCapacity else (baseCapacity - idx).coerceAtLeast(1)
-        val remaining = if (baseCapacity <= 0) 0 else (initialSlotCap - bookedForSlot).coerceAtLeast(0)
-
+    return listOf(
         DynamicAvailabilityOption(
-            id = idx,
+            id = 0,
             dateIso = isoKey,
-            title = "${idx + 1}° Turno: ${sdfDayNum.format(cStart.time)} → ${sdfDayNum.format(cEnd.time)}",
-            subtitle = "Pacchetto $durationDays giorni • $seasonLabel",
-            seasonLabel = seasonLabel,
-            pricePerPerson = slotPrice,
+            title = "Dal ${sdfDayNum.format(startCal.time)} al ${sdfDayNum.format(endCal.time)}",
+            subtitle = "Durata: $durationDays giorni • Posti disponibili: $remaining",
+            seasonLabel = "Date Ufficiali del Pacchetto",
+            pricePerPerson = basePrice,
             availableSpots = remaining,
             isPastDate = isPast
         )
-    }
+    )
 }
-
 fun buildMonthCalendarDays(
     context: Context,
     tripId: Long,
@@ -766,7 +753,7 @@ fun TripDetailScreen(
     // --- GALLERIA IMMAGINI A TUTTO SCHERMO (LIGHTBOX) ---
     if (fullscreenImageIndex != null && trip != null) {
         val rawImages = trip.imageUrls?.map { it.replace("localhost", "10.0.2.2") } ?: emptyList()
-        val images = if (rawImages.isNotEmpty()) rawImages else listOf(resolveTripImageUrl(trip))
+        val images = rawImages.filter { it.isNotBlank() }
 
         Dialog(
             onDismissRequest = { fullscreenImageIndex = null },

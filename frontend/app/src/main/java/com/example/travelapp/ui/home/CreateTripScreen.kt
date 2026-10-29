@@ -614,10 +614,7 @@ fun CreateTripScreen(
                 }
             }
 
-            val durationPresets = remember(isActivity) {
-                if (isActivity) listOf("30 min", "45 min", "1 ora", "1 ora 30 min", "2 ore")
-                else listOf("Giorno 1", "Giorno 2", "Giorno 3", "Giorno 4", "Mattinata")
-            }
+
 
             itinerarySteps.forEachIndexed { index, step ->
                 Surface(
@@ -706,55 +703,7 @@ fun CreateTripScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
 
-                        // Chip rapidi per la durata
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(durationPresets) { dur ->
-                                val selected = step.duration == dur
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = if (selected) accentColor else Color.White,
-                                    modifier = Modifier.clickable {
-                                        itinerarySteps[index] = step.copy(duration = dur)
-                                    }
-                                ) {
-                                    Text(
-                                        text = dur,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (selected) Color.White else TripBlack,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                    )
-                                }
-                            }
-                        }
 
-                        Text(
-                            text = "Cosa è incluso in questa tappa:",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.DarkGray
-                        )
-
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(inclusionPresets) { inc ->
-                                val selected = step.ticketInfo == inc
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = if (selected) TripGreen else Color.White,
-                                    modifier = Modifier.clickable {
-                                        itinerarySteps[index] = step.copy(ticketInfo = inc)
-                                    }
-                                ) {
-                                    Text(
-                                        text = inc,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (selected) Color.White else TripBlack,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                    )
-                                }
-                            }
-                        }
 
                         OutlinedTextField(
                             value = step.description,

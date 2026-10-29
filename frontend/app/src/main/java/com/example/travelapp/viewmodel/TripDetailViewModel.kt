@@ -10,6 +10,7 @@ import com.example.travelapp.network.CreateReviewRequest
 import com.example.travelapp.network.ItineraryListDTO
 import com.example.travelapp.network.ReservationDTO
 import com.example.travelapp.network.RetrofitClient
+import com.example.travelapp.network.SaveReceiptDetailsRequest
 import com.example.travelapp.network.SendChatMessageRequest
 import com.example.travelapp.network.TripDTO
 import com.example.travelapp.network.TripRequest
@@ -112,10 +113,11 @@ class TripDetailViewModel : ViewModel() {
         if (messageText.isBlank()) return
         viewModelScope.launch {
             try {
+                val packagePrefix = trip?.title?.let { "[Info su: $it]\n" } ?: ""
                 val response = RetrofitClient.apiService.sendChatMessage(
                     token = "Bearer $token",
                     tripId = tripId,
-                    request = SendChatMessageRequest(message = messageText.trim())
+                    request = SendChatMessageRequest(message = "$packagePrefix${messageText.trim()}")
                 )
                 if (response.isSuccessful) {
                     onSuccess()
@@ -123,7 +125,6 @@ class TripDetailViewModel : ViewModel() {
             } catch (_: Exception) {}
         }
     }
-
     fun deleteTrip(token: String, tripId: Long) {
         viewModelScope.launch {
             isLoading = true
@@ -183,41 +184,60 @@ class TripDetailViewModel : ViewModel() {
             bookingMessage = null
             try {
                 val authHeader = "Bearer $token"
+                val finalParticipants = participantsNames.ifBlank { currentUserName }
+                val titleKey = (trip?.title ?: "").trim().lowercase()
+                val receiptPrefs = context.getSharedPreferences("booking_receipts_prefs", Context.MODE_PRIVATE)
+
+                // 1. Salva subito i nominativi nelle SharedPreferences con chiave specifica per titolo e numero posti
+                receiptPrefs.edit().apply {
+                    putString("participants_${titleKey}_$spots", finalParticipants)
+                    putString("last_participants_list_title_$titleKey", finalParticipants)
+                    putString("last_participants_list_trip_$tripId", finalParticipants)
+                    putString("last_traveler_name_title_$titleKey", currentUserName)
+                    putString("last_traveler_email_title_$titleKey", currentUserEmail)
+                    putString("last_payment_method_title_$titleKey", paymentMethodLabel)
+                    putString("last_selected_slot_title_$titleKey", selectedSlotLabel)
+                }.commit()
+
                 val response = RetrofitClient.apiService.bookTrip(authHeader, tripId, spots)
                 if (response.isSuccessful) {
-                    // 1. Scala i posti sulla data specifica selezionata nel calendario
+                    // 2. Salva i nominativi e i dettagli della ricevuta permanentemente su PostgreSQL
+                    try {
+                        RetrofitClient.apiService.saveReceiptDetails(
+                            token = authHeader,
+                            tripId = tripId,
+                            request = SaveReceiptDetailsRequest(
+                                participantsNames = finalParticipants,
+                                selectedSlot = selectedSlotLabel,
+                                paymentMethod = paymentMethodLabel
+                            )
+                        )
+                    } catch (_: Exception) {}
+
+                    // 3. Scala i posti sulla data specifica selezionata nel calendario
                     val datePrefs = context.getSharedPreferences("date_inventory_prefs", Context.MODE_PRIVATE)
                     val key = "booked_${tripId}_$selectedDateIso"
                     val prevBooked = datePrefs.getInt(key, 0)
                     datePrefs.edit().putInt(key, prevBooked + spots).apply()
 
-                    // 2. Recupera l'ID dell'ultima prenotazione per salvare i metadati della Ricevuta
                     try {
                         val myRes = RetrofitClient.apiService.getMyReservations(authHeader)
                         val latestRes = myRes.body()?.maxByOrNull { it.id }
-                        val receiptPrefs = context.getSharedPreferences("booking_receipts_prefs", Context.MODE_PRIVATE)
-                        val editor = receiptPrefs.edit()
-                        val finalParticipants = participantsNames.ifBlank { currentUserName }
-                        if (latestRes != null) {
-                            editor.putString("traveler_name_${latestRes.id}", currentUserName)
-                            editor.putString("traveler_email_${latestRes.id}", currentUserEmail)
-                            editor.putString("payment_method_${latestRes.id}", paymentMethodLabel)
-                            editor.putString("selected_slot_${latestRes.id}", selectedSlotLabel)
-                            editor.putString("participants_list_${latestRes.id}", finalParticipants)
-                            editor.putFloat("unit_price_${latestRes.id}", unitPricePaid.toFloat())
+                        if (latestRes != null && latestRes.id > 0L) {
+                            receiptPrefs.edit()
+                                .putString("traveler_name_${latestRes.id}", currentUserName)
+                                .putString("traveler_email_${latestRes.id}", currentUserEmail)
+                                .putString("payment_method_${latestRes.id}", paymentMethodLabel)
+                                .putString("selected_slot_${latestRes.id}", selectedSlotLabel)
+                                .putString("participants_list_${latestRes.id}", finalParticipants)
+                                .putFloat("unit_price_${latestRes.id}", unitPricePaid.toFloat())
+                                .commit()
                         }
-                        // Salva anche per tripId come fallback immediato
-                        editor.putString("last_traveler_name_trip_$tripId", currentUserName)
-                        editor.putString("last_traveler_email_trip_$tripId", currentUserEmail)
-                        editor.putString("last_payment_method_trip_$tripId", paymentMethodLabel)
-                        editor.putString("last_selected_slot_trip_$tripId", selectedSlotLabel)
-                        editor.putString("last_participants_list_trip_$tripId", finalParticipants)
-                        editor.apply()
                     } catch (_: Exception) {}
 
                     bookingSuccess = true
                     val slotInfo = if (selectedSlotLabel.isNotBlank()) " per \"$selectedSlotLabel\"" else ""
-                    bookingMessage = "Pagamento autorizzato ($paymentMethodLabel) e prenotazione confermata$slotInfo! I posti della data scelta sono stati aggiornati."
+                    bookingMessage = "Pagamento autorizzato ($paymentMethodLabel) e prenotazione confermata$slotInfo! Nominativi registrati: $finalParticipants."
                     onDateBookedSuccess()
                     fetchTripDetail(token, tripId)
                 } else {

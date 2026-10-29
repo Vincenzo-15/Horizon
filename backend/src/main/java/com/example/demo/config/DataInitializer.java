@@ -23,6 +23,7 @@ public class DataInitializer implements CommandLineRunner {
     private final ItineraryListRepository itineraryListRepository;
     private final ReservationRepository reservationRepository;
     private final NotificationRepository notificationRepository;
+    private final ChatMessageRepository chatMessageRepository;
     private final PasswordEncoder passwordEncoder;
 
     @AllArgsConstructor
@@ -42,7 +43,7 @@ public class DataInitializer implements CommandLineRunner {
 
         String defaultHash = passwordEncoder.encode("Horizon2026!");
 
-        // 1. CREAZIONE UTENTI
+        // 1. CREAZIONE UTENTI (2 Agenzie Organizzatrici + 2 Viaggiatori)
         User agenziaItalia = new User();
         agenziaItalia.setName("Horizon Italia Grand Tours");
         agenziaItalia.setEmail("agenzia@horizon.it");
@@ -77,14 +78,15 @@ public class DataInitializer implements CommandLineRunner {
         giulia.setTelefono("+39 347 8899001");
         giulia = userRepository.save(giulia);
 
-        // 2. CREAZIONE VIAGGI E ATTIVITÀ CON TAPPE E RECENSIONI REALI SINCRONIZZATE AL 100%
+        // 2. CREAZIONE VIAGGI E ATTIVITÀ (SENZA EMOJI E CON METADATI LOGISTICI COMPLETI)
         Trip romaWeekend = createTrip(
                 "Roma Imperiale & Trastevere Autentica (4 Giorni)",
-                "Un viaggio indimenticabile di 4 giorni nel cuore della Città Eterna tra archeologia, vicoli storici e sapori autentici romani." +
-                        "\n@@STEP@@Giorno 1: Arrivo a Roma & Passeggiata Barocca||Giorno 1||🏨 Boutique Hotel 4* incluso||Check-in in hotel nel centro storico, briefing di benvenuto con il coordinatore e tour serale tra Piazza Navona, Pantheon e Fontana di Trevi." +
-                        "\n@@STEP@@Giorno 2: Colosseo, Foro Romano e Colle Palatino||Giorno 2||🎟️ Biglietto salta-fila incluso||Mattinata dedicata all'antica Roma con archeologo privato: accesso prioritario all'Anfiteatro Flavio, Via Sacra e vista panoramica dal Palatino." +
-                        "\n@@STEP@@Giorno 3: Musei Vaticani, Cappella Sistina & Trastevere||Giorno 3||🍷 Cena degustazione inclusa||Visita guidata della Basilica di San Pietro e dei Musei Vaticani. In serata, tour enogastronomico tra le botteghe storiche di Trastevere." +
-                        "\n@@STEP@@Giorno 4: Giardino degli Aranci, Aventino e Rientro||Giorno 4||📸 Sosta panoramica||Mattinata rilassante sul Colle Aventino con vista dalla celebre serratura del Priorato di Malta, tempo libero per lo shopping e partenza.",
+                "@@META@@Boutique Hotel 4 Stelle Centro Storico||Colazione inclusa (B&B) + Cena tipica||Treno Alta Velocità A/R • Transfer privato stazione-hotel incluso\n" +
+                        "Un viaggio indimenticabile di 4 giorni nel cuore della Città Eterna tra archeologia, vicoli storici e sapori autentici romani." +
+                        "\n@@STEP@@Giorno 1: Arrivo a Roma & Passeggiata Barocca||Giorno 1||Boutique Hotel 4 Stelle incluso||Check-in in hotel nel centro storico, briefing di benvenuto con il coordinatore e tour serale tra Piazza Navona, Pantheon e Fontana di Trevi." +
+                        "\n@@STEP@@Giorno 2: Colosseo, Foro Romano e Colle Palatino||Giorno 2||Biglietto salta-fila incluso||Mattinata dedicata all'antica Roma con archeologo privato: accesso prioritario all'Anfiteatro Flavio, Via Sacra e vista panoramica dal Palatino." +
+                        "\n@@STEP@@Giorno 3: Musei Vaticani, Cappella Sistina & Trastevere||Giorno 3||Cena degustazione inclusa||Visita guidata della Basilica di San Pietro e dei Musei Vaticani. In serata, tour enogastronomico tra le botteghe storiche di Trastevere." +
+                        "\n@@STEP@@Giorno 4: Giardino degli Aranci, Aventino e Rientro||Giorno 4||Sosta panoramica guidata||Mattinata rilassante sul Colle Aventino con vista dalla celebre serratura del Priorato di Malta, tempo libero e partenza.",
                 new BigDecimal("490.00"),
                 LocalDate.of(2026, 11, 12),
                 LocalDate.of(2026, 11, 15),
@@ -106,14 +108,14 @@ public class DataInitializer implements CommandLineRunner {
         Trip romaTourColosseo = createTrip(
                 "Attività: Tour Guidato Colosseo, Arena e Sotterranei",
                 "Escursione giornaliera di 3 ore con archeologo ufficiale. Accesso diretto al piano dell'Arena dei Gladiatori, visita ai sotterranei e passeggiata sul Colle Palatino." +
-                        "\n@@STEP@@Arco di Costantino: Accoglienza e Check-in||20 min||📍 Incontro con guida e radio||Incontro presso l'Arco di Costantino, consegna delle radioguide professionali e introduzione storica alla Roma Imperiale." +
-                        "\n@@STEP@@Porta Libitinaria e Piano dell'Arena dei Gladiatori||50 min||🎟️ Accesso esclusivo Arena incluso||Ingresso riservato dalla Porta dei Gladiatori direttamente sul pavimento ligneo dell'Arena, con vista a 360 gradi sulle gradinate." +
-                        "\n@@STEP@@Sotterranei del Colosseo (Ipogeo)||45 min||✨ Area riservata inclusa||Discesa nei corridoi sotterranei dove attendevano gladiatori e scenografie meccaniche prima degli spettacoli." +
-                        "\n@@STEP@@Colle Palatino e Foro Romano||45 min||🎟️ Ingresso prioritario incluso||Salita panoramica sul Colle Palatino tra i resti dei palazzi imperiali e conclusione lungo la Via Sacra nel Foro Romano.",
+                        "\n@@STEP@@Arco di Costantino: Accoglienza e Check-in||20 min||Incontro con guida e radioguide||Incontro presso l'Arco di Costantino, consegna delle radioguide professionali e introduzione storica alla Roma Imperiale." +
+                        "\n@@STEP@@Porta Libitinaria e Piano dell'Arena dei Gladiatori||50 min||Accesso esclusivo Arena incluso||Ingresso riservato dalla Porta dei Gladiatori direttamente sul pavimento ligneo dell'Arena, con vista a 360 gradi sulle gradinate." +
+                        "\n@@STEP@@Sotterranei del Colosseo (Ipogeo)||45 min||Area riservata inclusa||Discesa nei corridoi sotterranei dove attendevano gladiatori e scenografie meccaniche prima degli spettacoli." +
+                        "\n@@STEP@@Colle Palatino e Foro Romano||45 min||Ingresso prioritario incluso||Salita panoramica sul Colle Palatino tra i resti dei palazzi imperiali e conclusione lungo la Via Sacra nel Foro Romano.",
                 new BigDecimal("65.00"),
                 LocalDate.of(2026, 11, 14),
                 LocalDate.of(2026, 11, 14),
-                4,
+                8,
                 "Roma",
                 agenziaItalia,
                 List.of(
@@ -130,11 +132,12 @@ public class DataInitializer implements CommandLineRunner {
 
         Trip losannaViaggio = createTrip(
                 "Losanna, Lago di Ginevra & Vigneti di Lavaux UNESCO",
-                "Esperienza alpina di 4 giorni affacciata sul Lago Lemano tra il centro storico medievale, il Museo Olimpico e i vigneti terrazzati patrimonio UNESCO." +
-                        "\n@@STEP@@Giorno 1: Porto di Ouchy & Lungolago sul Lemano||Giorno 1||🏨 Hotel vista lago incluso||Sistemazione a Ouchy, passeggiata al tramonto sul lungolago con vista sulle Alpi francesi e cena di benvenuto svizzera." +
-                        "\n@@STEP@@Giorno 2: Cité Medievale, Cattedrale & Museo Olimpico||Giorno 2||🎟️ Biglietto Museo Olimpico incluso||Esplorazione della Cattedrale gotica di Notre-Dame, salita degli scalini storici del mercato e pomeriggio interattivo al Museo Olimpico." +
-                        "\n@@STEP@@Giorno 3: Trenino dei Vigneti di Lavaux & Cantine||Giorno 3||🍷 Degustazione 4 calici inclusa||Escursione tra i terrazzamenti vitivinicoli di Lavaux (UNESCO) a picco sul lago con degustazione in cantina storica a Epesses." +
-                        "\n@@STEP@@Giorno 4: Crociera in Battello Belle Époque e Rientro||Giorno 4||⛴️ Crociera storica inclusa||Navigazione panoramica a vapore sul Lago di Ginevra e rientro nel pomeriggio.",
+                "@@META@@Hotel 4 Stelle Ouchy Vista Lago||Colazione inclusa (B&B)||Treno EuroCity A/R • Swiss Travel Pass e Battello inclusi\n" +
+                        "Esperienza alpina di 4 giorni affacciata sul Lago Lemano tra il centro storico medievale, il Museo Olimpico e i vigneti terrazzati patrimonio UNESCO." +
+                        "\n@@STEP@@Giorno 1: Porto di Ouchy & Lungolago sul Lemano||Giorno 1||Hotel vista lago incluso||Sistemazione a Ouchy, passeggiata al tramonto sul lungolago con vista sulle Alpi francesi e cena di benvenuto svizzera." +
+                        "\n@@STEP@@Giorno 2: Cité Medievale, Cattedrale & Museo Olimpico||Giorno 2||Biglietto Museo Olimpico incluso||Esplorazione della Cattedrale gotica di Notre-Dame, salita degli scalini storici del mercato e pomeriggio interattivo al Museo Olimpico." +
+                        "\n@@STEP@@Giorno 3: Trenino dei Vigneti di Lavaux & Cantine||Giorno 3||Degustazione 4 calici inclusa||Escursione tra i terrazzamenti vitivinicoli di Lavaux (UNESCO) a picco sul lago con degustazione in cantina storica a Epesses." +
+                        "\n@@STEP@@Giorno 4: Crociera in Battello Belle Époque e Rientro||Giorno 4||Crociera storica inclusa||Navigazione panoramica a vapore sul Lago di Ginevra e rientro nel pomeriggio.",
                 new BigDecimal("640.00"),
                 LocalDate.of(2026, 11, 20),
                 LocalDate.of(2026, 11, 23),
@@ -155,10 +158,10 @@ public class DataInitializer implements CommandLineRunner {
         Trip losannaDegustazione = createTrip(
                 "Escursione & Degustazione Vini a Lavaux con Crociera",
                 "Attività giornaliera con partenza dal porto di Losanna-Ouchy. Navigazione sul Lago di Ginevra e degustazione guidata di Chasselas presso una cantina storica." +
-                        "\n@@STEP@@Imbarco al Molo di Losanna-Ouchy||40 min||⛴️ Biglietto battello incluso||Partenza dal porto turistico di Ouchy e navigazione panoramica lungo la costa terrazzata di Lavaux." +
-                        "\n@@STEP@@Passeggiata tra i Filari UNESCO di Saint-Saphorin||50 min||📍 Guida sommelier locale||Camminata agevole tra i muretti a secco medievali e spiegazione del metodo dei 'tre soli' che scalda le uve sul lago." +
-                        "\n@@STEP@@Degustazione in Cantina Storica con Tagliere Alpino||1 ora 15 min||🍷 4 Vini + Tagliere inclusi||Assaggio guidato di 4 annate di Chasselas e Pinot Noir accompagnati da formaggi Gruyère DOP e pane di segale." +
-                        "\n@@STEP@@Rientro in Treno Panoramico a Losanna||25 min||🚆 Biglietto rientro incluso||Ritorno diretto alla stazione centrale di Losanna costeggiando l'acqua.",
+                        "\n@@STEP@@Imbarco al Molo di Losanna-Ouchy||40 min||Biglietto battello incluso||Partenza dal porto turistico di Ouchy e navigazione panoramica lungo la costa terrazzata di Lavaux." +
+                        "\n@@STEP@@Passeggiata tra i Filari UNESCO di Saint-Saphorin||50 min||Guida sommelier locale||Camminata agevole tra i muretti a secco medievali e spiegazione del metodo dei 'tre soli' che scalda le uve sul lago." +
+                        "\n@@STEP@@Degustazione in Cantina Storica con Tagliere Alpino||1 ora 15 min||4 Vini + Tagliere inclusi||Assaggio guidato di 4 annate di Chasselas e Pinot Noir accompagnati da formaggi Gruyère DOP e pane di segale." +
+                        "\n@@STEP@@Rientro in Treno Panoramico a Losanna||25 min||Biglietto rientro incluso||Ritorno diretto alla stazione centrale di Losanna costeggiando l'acqua.",
                 new BigDecimal("85.00"),
                 LocalDate.of(2026, 11, 21),
                 LocalDate.of(2026, 11, 21),
@@ -177,11 +180,12 @@ public class DataInitializer implements CommandLineRunner {
 
         Trip parigiViaggio = createTrip(
                 "Parigi Bohémien: Montmartre, Louvre e Senna (5 Giorni)",
-                "Scopri il fascino senza tempo della Ville Lumière: hotel 4 stelle nel quartiere Marais, ingresso riservato al Museo del Louvre, salita sulla Torre Eiffel e crociera sulla Senna." +
-                        "\n@@STEP@@Giorno 1: Quartiere Le Marais & Place des Vosges||Giorno 1||🏨 Hotel 4* nel Marais incluso||Arrivo a Parigi, check-in e passeggiata guidata tra le gallerie d'arte e i cortili storici del Marais." +
-                        "\n@@STEP@@Giorno 2: Museo del Louvre & Giardini delle Tuileries||Giorno 2||🎟️ Ingresso prioritario Louvre||Mattinata dedicata ai capolavori del Louvre con storico dell'arte; pomeriggio tra Place Vendôme e l'Opéra Garnier." +
-                        "\n@@STEP@@Giorno 3: Torre Eiffel al Tramonto & Crociera sulla Senna||Giorno 3||⛴️ Salita Eiffel + Crociera incluse||Accesso al secondo livello della Torre Eiffel e navigazione serale lungo i ponti illuminati di Parigi." +
-                        "\n@@STEP@@Giorni 4-5: Collina di Montmartre, Sacré-Cœur e Rientro||Giorni 4-5||📍 Tour artistico guidato||Esplorazione di Place du Tertre, Basilica del Sacro Cuore e tempo libero sugli Champs-Élysées prima del rientro.",
+                "@@META@@Hotel 4 Stelle Quartiere Le Marais||Colazione inclusa (B&B)||Volo A/R Incluso • Bagaglio 20kg e Transfer aeroporto-hotel\n" +
+                        "Scopri il fascino senza tempo della Ville Lumière: hotel 4 stelle nel quartiere Marais, ingresso riservato al Museo del Louvre, salita sulla Torre Eiffel e crociera sulla Senna." +
+                        "\n@@STEP@@Giorno 1: Quartiere Le Marais & Place des Vosges||Giorno 1||Hotel 4 Stelle nel Marais incluso||Arrivo a Parigi, check-in e passeggiata guidata tra le gallerie d'arte e i cortili storici del Marais." +
+                        "\n@@STEP@@Giorno 2: Museo del Louvre & Giardini delle Tuileries||Giorno 2||Ingresso prioritario Louvre||Mattinata dedicata ai capolavori del Louvre con storico dell'arte; pomeriggio tra Place Vendôme e l'Opéra Garnier." +
+                        "\n@@STEP@@Giorno 3: Torre Eiffel al Tramonto & Crociera sulla Senna||Giorno 3||Salita Eiffel + Crociera incluse||Accesso al secondo livello della Torre Eiffel e navigazione serale lungo i ponti illuminati di Parigi." +
+                        "\n@@STEP@@Giorni 4-5: Collina di Montmartre, Sacré-Cœur e Rientro||Giorni 4-5||Tour artistico guidato||Esplorazione di Place du Tertre, Basilica del Sacro Cuore e tempo libero sugli Champs-Élysées prima del rientro.",
                 new BigDecimal("720.00"),
                 LocalDate.of(2026, 12, 4),
                 LocalDate.of(2026, 12, 8),
@@ -201,15 +205,16 @@ public class DataInitializer implements CommandLineRunner {
 
         Trip amalfiCostiera = createTrip(
                 "Costiera Amalfitana, Positano & Capri in Barca (4 Giorni)",
-                "Soggiorno panoramico ad Amalfi con escursione privata in gozzo sorrentino verso i Faraglioni di Capri, trekking sul Sentiero degli Dei e degustazione di limoncello." +
-                        "\n@@STEP@@Giorno 1: Duomo di Amalfi & Limoneti Storici||Giorno 1||🍋 Degustazione in limoneto inclusa||Arrivo ad Amalfi, visita del Duomo arabo-normanno e passeggiata nei giardini terrazzati di limoni Sfusato Amalfitano." +
-                        "\n@@STEP@@Giorno 2: Crociera in Gozzo Privato a Capri e Faraglioni||Giorno 2||⛵ Barca privata per l'intera giornata||Navigazione lungo la costa verso Capri, sosta bagno ai Faraglioni, Grotta Bianca e pomeriggio libero in Piazzetta." +
-                        "\n@@STEP@@Giorno 3: Sentiero degli Dei & Borgo di Positano||Giorno 3||🥾 Guida escursionistica ufficiale||Trekking panoramico da Bomerano a Nocelle sospesi tra cielo e mare, con discesa finale tra le boutique di Positano." +
-                        "\n@@STEP@@Giorno 4: Villa Rufolo a Ravello & Partenza||Giorno 4||🎟️ Ingresso giardini Villa Rufolo||Mattinata sulla terrazza dell'Infinito a Ravello e rientro.",
+                "@@META@@Hotel Panoramico 4 Stelle Amalfi||Mezza Pensione||Treno Alta Velocità A/R • Transfer costiero e Gozzo privato inclusi\n" +
+                        "Soggiorno panoramico ad Amalfi con escursione privata in gozzo sorrentino verso i Faraglioni di Capri, trekking sul Sentiero degli Dei e degustazione di limoncello." +
+                        "\n@@STEP@@Giorno 1: Duomo di Amalfi & Limoneti Storici||Giorno 1||Degustazione in limoneto inclusa||Arrivo ad Amalfi, visita del Duomo arabo-normanno e passeggiata nei giardini terrazzati di limoni Sfusato Amalfitano." +
+                        "\n@@STEP@@Giorno 2: Crociera in Gozzo Privato a Capri e Faraglioni||Giorno 2||Barca privata per l'intera giornata||Navigazione lungo la costa verso Capri, sosta bagno ai Faraglioni, Grotta Bianca e pomeriggio libero in Piazzetta." +
+                        "\n@@STEP@@Giorno 3: Sentiero degli Dei & Borgo di Positano||Giorno 3||Guida escursionistica ufficiale||Trekking panoramico da Bomerano a Nocelle sospesi tra cielo e mare, con discesa finale tra le boutique di Positano." +
+                        "\n@@STEP@@Giorno 4: Villa Rufolo a Ravello & Partenza||Giorno 4||Ingresso giardini Villa Rufolo||Mattinata sulla terrazza dell'Infinito a Ravello e rientro.",
                 new BigDecimal("580.00"),
                 LocalDate.of(2026, 11, 26),
                 LocalDate.of(2026, 11, 29),
-                3,
+                6,
                 "Amalfi",
                 agenziaItalia,
                 List.of(
@@ -225,11 +230,12 @@ public class DataInitializer implements CommandLineRunner {
 
         Trip tokyoAvventura = createTrip(
                 "Tokyo Futuristica, Kyoto & Monte Fuji (9 Giorni)",
-                "Un'immersione totale nella cultura giapponese: dai templi storici di Asakusa all'incrocio di Shibuya, escursione al Monte Fuji e viaggio in Shinkansen verso Kyoto." +
-                        "\n@@STEP@@Giorni 1-3: Tokyo Storica (Asakusa) & Luci di Shinjuku||Giorni 1-3||🏨 Hotel a Tokyo + Welcome Dinner||Visita al tempio Senso-ji, santuario Meiji, incrocio di Shibuya e osservatorio panoramico di Shinjuku." +
-                        "\n@@STEP@@Giorni 4-5: Lago Kawaguchiko & Vista Monte Fuji||Giorni 4-5||🗻 Escursione + Ryokan con Onsen||Partenza per la regione dei Cinque Laghi ai piedi del Monte Fuji, funivia panoramica e pernottamento in Ryokan tradizionale." +
-                        "\n@@STEP@@Giorni 6-8: Treno Proiettile Shinkansen verso Kyoto & Arashiyama||Giorni 6-8||🚄 Pass Shinkansen incluso||Viaggio ad alta velocità verso Kyoto: Padiglione d'Oro, foresta di bambù di Arashiyama e santuario Fushimi Inari." +
-                        "\n@@STEP@@Giorno 9: Rientro a Tokyo, Mercato di Tsukiji & Partenza||Giorno 9||🍣 Street food tour incluso||Ultime ore dedicate alla gastronomia giapponese e trasferimento in aeroporto.",
+                "@@META@@Hotel 4 Stelle Shinjuku + Ryokan Tradizionale||Mezza Pensione||Volo A/R Incluso • Japan Rail Pass Shinkansen incluso\n" +
+                        "Un'immersione totale nella cultura giapponese: dai templi storici di Asakusa all'incrocio di Shibuya, escursione al Monte Fuji e viaggio in Shinkansen verso Kyoto." +
+                        "\n@@STEP@@Giorni 1-3: Tokyo Storica (Asakusa) & Luci di Shinjuku||Giorni 1-3||Hotel a Tokyo + Welcome Dinner||Visita al tempio Senso-ji, santuario Meiji, incrocio di Shibuya e osservatorio panoramico di Shinjuku." +
+                        "\n@@STEP@@Giorni 4-5: Lago Kawaguchiko & Vista Monte Fuji||Giorni 4-5||Escursione + Ryokan con Onsen||Partenza per la regione dei Cinque Laghi ai piedi del Monte Fuji, funivia panoramica e pernottamento in Ryokan tradizionale." +
+                        "\n@@STEP@@Giorni 6-8: Treno Proiettile Shinkansen verso Kyoto & Arashiyama||Giorni 6-8||Pass Shinkansen incluso||Viaggio ad alta velocità verso Kyoto: Padiglione d'Oro, foresta di bambù di Arashiyama e santuario Fushimi Inari." +
+                        "\n@@STEP@@Giorno 9: Rientro a Tokyo, Mercato di Tsukiji & Partenza||Giorno 9||Tour gastronomico incluso||Ultime ore dedicate alla gastronomia giapponese e trasferimento in aeroporto.",
                 new BigDecimal("1890.00"),
                 LocalDate.of(2027, 1, 15),
                 LocalDate.of(2027, 1, 24),
@@ -247,7 +253,7 @@ public class DataInitializer implements CommandLineRunner {
                 )
         );
 
-        // 3. CREAZIONE LISTE PREFERITI
+        // 3. CREAZIONE LISTE PREFERITI (PRIVATE E CONDIVISE)
         ItineraryList listaCondivisa = new ItineraryList();
         listaCondivisa.setName("Estate & Weekend con Amici");
         listaCondivisa.setVisibility(ItineraryList.Visibility.SHARED);
@@ -274,7 +280,7 @@ public class DataInitializer implements CommandLineRunner {
         listaPrivataMario.getTrips().add(tokyoAvventura);
         itineraryListRepository.save(listaPrivataMario);
 
-        // 4. CREAZIONE PRENOTAZIONI CONFERMATE
+        // 4. CREAZIONE PRENOTAZIONI CONFERMATE E METADATI RICEVUTA CON TUTTI I NOMINATIVI
         Reservation res1 = new Reservation();
         res1.setReservationDate(LocalDateTime.now().minusDays(2));
         res1.setStatus(Reservation.Status.CONFIRMED);
@@ -283,6 +289,10 @@ public class DataInitializer implements CommandLineRunner {
         res1.setBookedSpots(2);
         res1.setTotalPaid(980.0);
         reservationRepository.save(res1);
+
+        String detailsRes1 = "Partecipanti: Mario Rossi, Elena Santoro | Turno: Dal 12 nov 2026 al 15 nov 2026 | Pagamento: Carta Visa/Mastercard (•••• 8890) (" + romaWeekend.getTitle() + ")";
+        notificationRepository.save(new Notification("Dettagli Ricevuta: " + romaWeekend.getTitle(), detailsRes1, mario));
+        notificationRepository.save(new Notification("Dettagli Ricevuta: " + romaWeekend.getTitle(), detailsRes1, agenziaItalia));
 
         Reservation res2 = new Reservation();
         res2.setReservationDate(LocalDateTime.now().minusDays(1));
@@ -293,7 +303,30 @@ public class DataInitializer implements CommandLineRunner {
         res2.setTotalPaid(195.0);
         reservationRepository.save(res2);
 
-        // 5. CREAZIONE NOTIFICHE REALI
+        String detailsRes2 = "Partecipanti: Giulia Bianchi, Marco Ferri, Chiara Galli | Turno: Sabato 14 novembre 2026 | Pagamento: PayPal Express Verificato (" + romaTourColosseo.getTitle() + ")";
+        notificationRepository.save(new Notification("Dettagli Ricevuta: " + romaTourColosseo.getTitle(), detailsRes2, giulia));
+        notificationRepository.save(new Notification("Dettagli Ricevuta: " + romaTourColosseo.getTitle(), detailsRes2, agenziaItalia));
+
+        // 5. CREAZIONE CONVERSAZIONE CHAT INIZIALE SALVATA SU POSTGRESQL
+        ChatMessage msg1 = new ChatMessage();
+        msg1.setTrip(romaWeekend);
+        msg1.setTraveler(mario);
+        msg1.setSender(mario);
+        msg1.setMessage("[Info su: " + romaWeekend.getTitle() + "]\nSalve! Ho prenotato per 2 persone, vorrei confermare che la cena degustazione a Trastevere è inclusa.");
+        msg1.setTimestamp(LocalDateTime.now().minusHours(3));
+        msg1.setRead(true);
+        chatMessageRepository.save(msg1);
+
+        ChatMessage msg2 = new ChatMessage();
+        msg2.setTrip(romaWeekend);
+        msg2.setTraveler(mario);
+        msg2.setSender(agenziaItalia);
+        msg2.setMessage("Buongiorno Mario! Confermiamo che la cena degustazione del terzo giorno e tutti i biglietti salta-fila sono inclusi nel pacchetto.");
+        msg2.setTimestamp(LocalDateTime.now().minusHours(2));
+        msg2.setRead(false);
+        chatMessageRepository.save(msg2);
+
+        // 6. CREAZIONE NOTIFICHE REALI
         notificationRepository.save(new Notification(
                 "Nuova lista condivisa",
                 "Giulia Bianchi ha condiviso la lista 'Idee Svizzera & Francia' con te!",
@@ -301,7 +334,12 @@ public class DataInitializer implements CommandLineRunner {
         ));
         notificationRepository.save(new Notification(
                 "Prenotazione confermata!",
-                "Hai prenotato 2 posti per \"Roma Imperiale & Trastevere Autentica (4 Giorni)\". Puoi esportare il promemoria in formato calendario (.ics) dalla sezione Viaggi.",
+                "Hai prenotato 2 posti per \"Roma Imperiale & Trastevere Autentica (4 Giorni)\". Puoi aprire la ricevuta o esportare il file calendario (.ics) dalla sezione Viaggi.",
+                mario
+        ));
+        notificationRepository.save(new Notification(
+                "Nuova risposta da Horizon Italia Grand Tours",
+                "\"Buongiorno Mario! Confermiamo che la cena degustazione del terzo giorno...\" (" + romaWeekend.getTitle() + ")",
                 mario
         ));
         notificationRepository.save(new Notification(
@@ -314,8 +352,13 @@ public class DataInitializer implements CommandLineRunner {
                 "Mario Rossi ha prenotato 2 posti per \"Roma Imperiale & Trastevere Autentica (4 Giorni)\" (Totale: €980.0).",
                 agenziaItalia
         ));
+        notificationRepository.save(new Notification(
+                "Nuova prenotazione ricevuta!",
+                "Giulia Bianchi ha prenotato 3 posti per \"Attività: Tour Guidato Colosseo, Arena e Sotterranei\" (Totale: €195.0).",
+                agenziaItalia
+        ));
 
-        System.out.println("✅ DATABASE HORIZON POPOLATO CON RECENSIONI E VALUTAZIONI REALI SINCRONIZZATE!");
+        System.out.println("DATABASE HORIZON INIZIALIZZATO CON SUCCESSO.");
     }
 
     private Trip createTrip(

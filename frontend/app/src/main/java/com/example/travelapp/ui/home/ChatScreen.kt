@@ -18,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import android.content.Context
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,6 +44,7 @@ fun LiveChatTabScreen(
 ) {
     val isOrganizer = ruoloUtente == "ORGANIZZATORE"
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var conversations by remember { mutableStateOf<List<ChatConversationDTO>>(emptyList()) }
     var isLoadingConversations by remember { mutableStateOf(true) }
@@ -287,7 +290,15 @@ fun LiveChatTabScreen(
                             modifier = Modifier.padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Avatar con miniatura del viaggio/agenzia
+                            // Avatar con Foto Profilo Utente / Agenzia
+                            val targetEmail = if (isOrganizer) conv.travelerEmail else conv.agencyEmail
+                            val prefs = remember(targetEmail) {
+                                context.getSharedPreferences("profile_prefs", Context.MODE_PRIVATE)
+                            }
+                            val profileImageUri = remember(targetEmail) {
+                                prefs.getString("profile_image_$targetEmail", null)
+                            }
+
                             Box(
                                 modifier = Modifier
                                     .size(58.dp)
@@ -295,10 +306,10 @@ fun LiveChatTabScreen(
                                     .background(TripGreen.copy(alpha = 0.15f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (matchedTrip != null) {
+                                if (profileImageUri != null) {
                                     AsyncImage(
-                                        model = resolveTripImageUrl(matchedTrip),
-                                        contentDescription = conv.tripTitle,
+                                        model = profileImageUri,
+                                        contentDescription = "Foto Profilo",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize()
                                     )
@@ -428,14 +439,14 @@ fun LiveChatTabScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Text(
-                            text = conv.tripTitle,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TripGreen,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+//                        Text(
+//                            text = conv.tripTitle,
+//                            fontSize = 12.sp,
+//                            fontWeight = FontWeight.Bold,
+//                            color = TripGreen,
+//                            maxLines = 1,
+//                            overflow = TextOverflow.Ellipsis
+//                        )
                     }
                 }
             }
