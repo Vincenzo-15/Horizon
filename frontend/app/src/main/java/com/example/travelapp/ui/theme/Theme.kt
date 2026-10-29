@@ -40,7 +40,7 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun TravelAppTheme(
-    darkTheme: Boolean = false, // Forziamo il tema chiaro luminoso in stile TripAdvisor/Airbnb
+    darkTheme: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme

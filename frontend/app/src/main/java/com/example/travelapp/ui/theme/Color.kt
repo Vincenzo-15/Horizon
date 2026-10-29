@@ -2,7 +2,7 @@ package com.example.travelapp.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// --- PALETTE UFFICIALE HORIZON TRAVEL (STILE TRIPADVISOR / AIRBNB) ---
+// --- PALETTE UFFICIALE HORIZON TRAVEL ---
 val TripGreen = Color(0xFF00AA6C)
 val TripDarkGreen = Color(0xFF004F32)
 val TripBlack = Color(0xFF1A1A1A)
@@ -10,7 +10,7 @@ val TripWarmBg = Color(0xFFF4F6F5)
 val TripAmber = Color(0xFFFFB800)
 val TripOrangeActivity = Color(0xFFE65100)
 
-// --- TEMA CHIARO (Allineato alla palette Horizon) ---
+// --- TEMA CHIARO  ---
 val PrimaryLight = TripGreen
 val OnPrimaryLight = Color(0xFFFFFFFF)
 val SecondaryLight = TripOrangeActivity

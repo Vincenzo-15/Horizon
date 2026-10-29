@@ -513,7 +513,7 @@ fun OrganizerDashboard(
                                 Spacer(modifier = Modifier.height(6.dp))
                             }
 
-                            items(viewModel.agencyOrders) { order ->
+                            items(viewModel.agencyOrders.take(3)) { order ->
                                 val matchedTrip = viewModel.myTrips.find {
                                     it.id == order.tripId || it.title.equals(order.tripTitle, ignoreCase = true)
                                 }
@@ -1191,13 +1191,14 @@ fun AgencyReceiptRowCard(
 
             Spacer(modifier = Modifier.width(12.dp))
 
+            // Mostriamo solo il nome del titolare e il pacchetto, senza importi in chiaro nell'anteprima
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = receiptInfo.participantsList,
+                    text = receiptInfo.travelerName,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 15.sp,
                     color = TripBlack,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
@@ -1216,10 +1217,10 @@ fun AgencyReceiptRowCard(
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Text(
-                    text = "€${String.format(Locale.ITALY, "%.0f", order.totalPaid)}",
+                    text = "Dettagli",
                     color = TripDarkGreen,
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 14.sp,
+                    fontSize = 12.sp,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                 )
             }

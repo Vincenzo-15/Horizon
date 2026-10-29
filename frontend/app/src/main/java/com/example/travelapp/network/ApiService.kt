@@ -129,7 +129,7 @@ interface ApiService {
         @Path("listId") listId: Long
     ): retrofit2.Response<List<TripDTO>>
 
-    // 7. Modifica nome e visibilità di una lista (es. da SHARED a PRIVATE o viceversa)
+    // 7. Modifica nome e visibilità di una lista
     @PUT("/api/lists/{listId}")
     suspend fun updateList(
         @Header("Authorization") token: String,

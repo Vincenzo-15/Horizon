@@ -565,7 +565,7 @@ fun CreateTripScreen(
             )
 
             // =========================================================================
-            // COSTRUTTORE DINAMICO ITINERARIO STEP-BY-STEP (STILE TRIPADVISOR)
+            // COSTRUTTORE DINAMICO ITINERARIO STEP-BY-STEP
             // =========================================================================
             HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
 

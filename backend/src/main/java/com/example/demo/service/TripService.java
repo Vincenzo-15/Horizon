@@ -1,14 +1,17 @@
 package com.example.demo.service;
 
 import com.example.demo.dto.TripDTO;
+import com.example.demo.model.Notification;
+import com.example.demo.model.Reservation;
 import com.example.demo.model.Trip;
 import com.example.demo.model.User;
+import com.example.demo.repository.NotificationRepository;
+import com.example.demo.repository.ReservationRepository;
 import com.example.demo.repository.TripRepository;
 import com.example.demo.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
-// --- IMPORT CORRETTO DI SPRING BOOT ---
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -20,6 +23,8 @@ public class TripService {
 
     private final TripRepository tripRepository;
     private final UserRepository userRepository;
+    private final ReservationRepository reservationRepository;
+    private final NotificationRepository notificationRepository;
     private final ModelMapper modelMapper;
 
     @Transactional
@@ -70,6 +75,25 @@ public class TripService {
             throw new RuntimeException("Non sei autorizzato a eliminare questo pacchetto!");
         }
 
+        // 1. Trova tutte le prenotazioni attive collegate a questo pacchetto
+        List<Reservation> reservations = reservationRepository.findByTripId(id);
+
+        // 2. Invia una notifica di rimborso e cancellazione a ciascun viaggiatore
+        for (Reservation res : reservations) {
+            if (res.getTraveler() != null) {
+                Notification cancelNotif = new Notification(
+                        "Viaggio Annullato & Rimborso Emesso",
+                        "Il pacchetto \"" + trip.getTitle() + "\" è stato cancellato dall'agenzia. È stato disposto il rimborso integrale di €" + res.getTotalPaid() + " sul tuo metodo di pagamento.",
+                        res.getTraveler()
+                );
+                notificationRepository.save(cancelNotif);
+            }
+        }
+
+        // 3. Elimina le prenotazioni collegate per rispettare i vincoli del database
+        reservationRepository.deleteAll(reservations);
+
+        // 4. Elimina definitivamente il viaggio
         tripRepository.delete(trip);
     }
 
@@ -90,7 +114,6 @@ public class TripService {
         }
 
         // 3. Aggiorno solo i campi modificabili
-        // Non aggiorniamo l'id, l'organizzatore, o le liste preferiti/prenotazioni
         if (updatedTripData.getTitle() != null) {
             existingTrip.setTitle(updatedTripData.getTitle());
         }
@@ -101,7 +124,6 @@ public class TripService {
             existingTrip.setPrice(updatedTripData.getPrice());
         }
         if (updatedTripData.getAvailableSpots() != null) {
-            // Un controllo carino: non far scendere i posti sotto zero
             if(updatedTripData.getAvailableSpots() >= 0){
                 existingTrip.setAvailableSpots(updatedTripData.getAvailableSpots());
             }
@@ -116,16 +138,11 @@ public class TripService {
             existingTrip.setEndDate(updatedTripData.getEndDate());
         }
 
-        // Gestione delle immagini (sostituisce quelle vecchie con le nuove se presenti)
         if (updatedTripData.getImageUrls() != null && !updatedTripData.getImageUrls().isEmpty()) {
             existingTrip.setImageUrls(updatedTripData.getImageUrls());
         }
 
-        // 4. Salvo le modifiche. Grazie a @Transactional, il save non è strettamente obbligatorio,
-        // ma è buona prassi esplicitarlo.
         Trip savedTrip = tripRepository.save(existingTrip);
-
-        // 5. Restituisco il DTO aggiornato
         return convertToDTO(savedTrip);
     }
 

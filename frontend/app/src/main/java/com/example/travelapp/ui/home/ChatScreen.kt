@@ -76,7 +76,7 @@ fun LiveChatTabScreen(
         }
     }
 
-    // Polling in tempo reale della lista conversazioni (Inbox stile WhatsApp) quando siamo nella lista
+    // Polling in tempo reale della lista conversazioni quando siamo nella lista
     LaunchedEffect(activeConversation, tokenUtente) {
         if (activeConversation == null && tokenUtente.isNotBlank()) {
             while (activeConversation == null) {
@@ -353,7 +353,7 @@ fun LiveChatTabScreen(
                                 Spacer(modifier = Modifier.height(2.dp))
 
 
-                                // Terza riga: Anteprima dell'ultimo messaggio + Badge Verde Non Letti stile WhatsApp
+
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -395,7 +395,7 @@ fun LiveChatTabScreen(
         }
     } else {
         // =========================================================================
-        // VISTA 2: STANZA DI CHAT DIRETTA (STILE WHATSAPP)
+        // VISTA 2: STANZA DI CHAT DIRETTA
         // =========================================================================
         val conv = activeConversation!!
         val counterpartName = if (isOrganizer) conv.travelerName else conv.agencyName

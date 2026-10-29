@@ -99,7 +99,7 @@ class MainActivity : ComponentActivity() {
                             HomeScreen(
                                 tokenUtente = currentToken,
                                 onTripClick = { tripId ->
-                                    navController.navigate("trip_detail/$tripId") // --- AGGIUNTO ---
+                                    navController.navigate("trip_detail/$tripId")
                                 },
                                 onNavigateToProfile = {navController.navigate("profile")}
                             )
@@ -112,7 +112,7 @@ class MainActivity : ComponentActivity() {
                                 tokenUtente = currentToken,
                                 onNavigateToCreateTrip = { navController.navigate("create_trip") },
                                 onTripClick = { tripId ->
-                                    navController.navigate("trip_detail/$tripId") // --- AGGIUNTO ---
+                                    navController.navigate("trip_detail/$tripId")
                                 },
                                 onNavigateToProfile = {navController.navigate("profile")}
                             )
@@ -127,7 +127,7 @@ class MainActivity : ComponentActivity() {
                                 onLogout = {
                                     tokenManager.clearToken()
                                     navController.navigate("login") {
-                                        popUpTo(0) { inclusive = true } // Pulisce tutta la cronologia
+                                        popUpTo(0) { inclusive = true }
                                     }
                                 }
                             )

@@ -128,12 +128,13 @@ class TripDetailViewModel : ViewModel() {
     fun deleteTrip(token: String, tripId: Long) {
         viewModelScope.launch {
             isLoading = true
+            errorMessage = null
             try {
                 val response = RetrofitClient.apiService.deleteTrip("Bearer $token", tripId)
                 if (response.isSuccessful) {
                     isDeleted = true
                 } else {
-                    errorMessage = "Non è stato possibile eliminare il pacchetto (${response.code()})"
+                    errorMessage = "Impossibile eliminare il pacchetto. Riprova più tardi."
                 }
             } catch (e: Exception) {
                 errorMessage = "Errore di connessione durante l'eliminazione."

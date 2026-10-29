@@ -30,7 +30,7 @@ class ListDetailViewModel : ViewModel() {
                     listDetails = detailsResponse.body()
                 }
 
-                // 2. Chiediamo al server DIRETTAMENTE i viaggi salvati in questa lista (Senza trucchetti!)
+                // 2. Chiediamo al server DIRETTAMENTE i viaggi salvati in questa lista
                 val tripsResponse = RetrofitClient.apiService.getTripsInList(authHeader, listId)
                 if (tripsResponse.isSuccessful && tripsResponse.body() != null) {
                     tripsInList = tripsResponse.body()!!

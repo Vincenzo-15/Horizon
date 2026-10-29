@@ -6,14 +6,14 @@ import retrofit2.converter.gson.GsonConverterFactory
 // Usando 'object', Kotlin crea un Singleton: un'unica istanza condivisa in tutta l'app
 object RetrofitClient {
 
-    // Questo è l'indirizzo magico per collegare l'emulatore Android al localhost del tuo PC
+    // Questo è l'indirizzo magico per collegare l'emulatore Android al localhost
     private const val BASE_URL = "http://192.168.1.99:8080"
 
-    // Qui "costruiamo" il nostro postino usando il Builder di Retrofit
+
     val apiService: ApiService by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
-            .addConverterFactory(GsonConverterFactory.create()) // Spiega a Retrofit come leggere i JSON
+            .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(ApiService::class.java)
     }

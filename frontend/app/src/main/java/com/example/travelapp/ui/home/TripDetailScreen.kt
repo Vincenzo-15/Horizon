@@ -617,7 +617,6 @@ fun TripDetailScreen(
     }
 
     // --- BOTTOM SHEET: CONTATTA L'AGENZIA ORGANIZZATRICE ---
-    // --- BOTTOM SHEET SEMPLIFICATO: CONTATTA L'AGENZIA (CHAT O CHIAMATA) ---
     if (showContactAgencySheet && trip != null) {
         val agencyName = trip.organizerName ?: "Agenzia Partner Horizon"
         var inquiryMessage by remember { mutableStateOf("") }
@@ -750,7 +749,7 @@ fun TripDetailScreen(
         )
     }
 
-    // --- GALLERIA IMMAGINI A TUTTO SCHERMO (LIGHTBOX) ---
+    // --- GALLERIA IMMAGINI A TUTTO SCHERMO ---
     if (fullscreenImageIndex != null && trip != null) {
         val rawImages = trip.imageUrls?.map { it.replace("localhost", "10.0.2.2") } ?: emptyList()
         val images = rawImages.filter { it.isNotBlank() }
@@ -1072,7 +1071,7 @@ fun TripDetailScreen(
         }
     }
 
-    // --- POPUP: SCRIVI UNA RECENSIONE (SALVATA REALMENTE NEL DATABASE) ---
+    // --- POPUP: SCRIVI UNA RECENSIONE ---
     if (showAddReviewDialog) {
         var newRating by remember { mutableStateOf(5) }
         var newComment by remember { mutableStateOf("") }
@@ -1152,7 +1151,7 @@ fun TripDetailScreen(
         )
     }
 
-    // --- BOTTOM SHEET AGENZIA: MODIFICA ANNUNCIO E TAPPE (MANTIENE INTATTE LE RECENSIONI NEL DB) ---
+    // --- BOTTOM SHEET AGENZIA: MODIFICA ANNUNCIO E TAPPE ---
     if (showEditDialog && trip != null) {
         ModalBottomSheet(
             onDismissRequest = { showEditDialog = false },

@@ -269,7 +269,7 @@ fun HomeScreen(
         viewModel.trips.filter { it.availableSpots > 0 }
     }
 
-    // Collezioni tematiche per la Home (Stile GetYourGuide / TripAdvisor / Airbnb)
+    // Collezioni tematiche per la Home
     val topRatedTrips = remember(bookableTrips) {
         bookableTrips.filter { it.reviewCount > 0 }.sortedWith(compareByDescending<TripDTO> { it.averageRating} .thenByDescending { it.reviewCount }).take(5)
     }
@@ -568,7 +568,7 @@ fun HomeScreen(
                                 Spacer(modifier = Modifier.height(14.dp))
                             }
 
-                            // 3. CATEGORIE ISPIRAZIONALI (STILE AIRBNB / GETYOURGUIDE)
+                            // 3. CATEGORIE ISPIRAZIONALI
                             item {
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 24.dp),
@@ -645,7 +645,7 @@ fun HomeScreen(
                                     Spacer(modifier = Modifier.height(28.dp))
                                 }
 
-                                // SEZIONE B: SCELTE DAI VIAGGIATORI (TRAVELLERS' CHOICE CAROUSEL)
+                                // SEZIONE B: SCELTE DAI VIAGGIATORI
                                 if (topRatedTrips.isNotEmpty()) {
                                     item {
                                         SectionHeader(

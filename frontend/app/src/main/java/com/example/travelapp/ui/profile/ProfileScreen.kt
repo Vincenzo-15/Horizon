@@ -264,7 +264,7 @@ fun ProfileScreen(
 }
 
 // =========================================================================
-// 1. PAGINA PRINCIPALE DEL PROFILO (OMOGENEA ALLA HOME)
+// 1. PAGINA PRINCIPALE DEL PROFILO
 // =========================================================================
 @Composable
 private fun ProfileMainPage(
@@ -305,7 +305,6 @@ private fun ProfileMainPage(
             .background(TripWarmBg),
         contentPadding = PaddingValues(bottom = 36.dp)
     ) {
-        // HEADER IN STILE HOMESCREEN - SPAZIO AUMENTATO A 56.DP
         item {
             Row(
                 modifier = Modifier
@@ -1067,7 +1066,7 @@ private fun PartnerPlanPage(
 }
 
 // =========================================================================
-// HEADER CONDIVISO PER LE SOTTOPAGINE CON MARGINE TOP 56.DP
+// HEADER CONDIVISO PER LE SOTTOPAGINE
 // =========================================================================
 @Composable
 private fun SubPageHeader(
